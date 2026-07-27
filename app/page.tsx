@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowUpDown, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upload, X } from "lucide-react";
 import type { Presupuesto } from "@/lib/types";
-import { CATEGORIAS } from "@/lib/constants";
+import { APP_VERSION, CATEGORIAS } from "@/lib/constants";
 import { fetchPresupuestos, logout } from "@/lib/apiClient";
 import { fmtMoney, normalizeStr } from "@/lib/format";
 import { Button, Notice, inputStyleSm } from "./components/ui";
@@ -13,6 +13,7 @@ import UploadModal from "./components/UploadModal";
 import DetailModal from "./components/DetailModal";
 import ComparadorModal from "./components/ComparadorModal";
 import CotizadorPanel, { type CartLine } from "./components/CotizadorPanel";
+import ChangelogModal from "./components/ChangelogModal";
 
 type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marca";
 
@@ -36,6 +37,7 @@ export default function HomePage() {
   const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
   const [comparadorOpen, setComparadorOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
 
   const showNotice = useCallback((type: "error" | "success", message: string) => {
@@ -152,7 +154,15 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
           <div>
-            <h1 className="text-lg font-semibold text-[#282828]">Presupuestos</h1>
+            <h1 className="text-lg font-semibold text-[#282828]">
+              Presupuestos{" "}
+              <button
+                onClick={() => setChangelogOpen(true)}
+                className="align-middle text-xs font-normal text-[#606060] hover:text-[#e83038] hover:underline"
+              >
+                v{APP_VERSION}
+              </button>
+            </h1>
             <p className="text-xs text-[#606060]">{db.length} presupuestos · {rows.length} líneas</p>
           </div>
         </div>
@@ -330,6 +340,8 @@ export default function HomePage() {
       {cartOpen && (
         <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} />
       )}
+
+      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
 
       {notice && <Notice type={notice.type} message={notice.message} />}
     </div>

@@ -7,6 +7,21 @@ export const BRAND = {
   border: "#e2e0dc",
 };
 
+// Sube este número cada vez que se despliegue un cambio, y añade una
+// línea al historial para saber qué trae cada versión.
+export const APP_VERSION = "1.2.0";
+export const CHANGELOG: { version: string; desc: string }[] = [
+  { version: "1.2.0", desc: "Filtro por año en el listado principal" },
+  {
+    version: "1.1.0",
+    desc: "Logotipo en la cabecera, enlace de Google Drive disponible ya en la pantalla de subida (antes solo al editar), y el filtro de categoría vuelve a mostrar las 11 categorías fijas",
+  },
+  {
+    version: "1.0.0",
+    desc: "Versión inicial de la app real: migración desde el artefacto de Claude.ai a Next.js + Supabase, con subida de PDF, extracción por IA, comparador de precios y cotizador",
+  },
+];
+
 export const CATEGORIAS = [
   "Muelle de carga",
   "Minidock",
