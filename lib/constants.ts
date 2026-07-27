@@ -1,0 +1,69 @@
+export const BRAND = {
+  charcoal: "#282828",
+  red: "#e83038",
+  gray: "#606060",
+  bg: "#f5f4f2",
+  panel: "#ffffff",
+  border: "#e2e0dc",
+};
+
+export const CATEGORIAS = [
+  "Muelle de carga",
+  "Minidock",
+  "Puerta seccional",
+  "Puerta rápida",
+  "Puerta cortafuegos",
+  "Accesorio muelle de carga",
+  "Accesorio puerta seccional",
+  "Accesorio puerta rápida",
+  "Accesorio puerta cortafuegos",
+  "Transporte",
+  "Instalación",
+] as const;
+
+export type Categoria = (typeof CATEGORIAS)[number];
+
+export const EXTRACTION_PROMPT = `Eres un asistente que extrae datos de presupuestos, ofertas o confirmaciones de pedido de proveedores de puertas industriales y equipos de muelle de carga. Estos documentos vienen de proveedores distintos (Novoferm, Cadlan, Hörmann, Assa Abloy, etc.) con formatos de tabla muy variados: a veces es una lista plana de productos, y otras veces cada producto principal viene seguido de líneas de accesorios, transporte o montaje asociadas a él (identifícalas por contexto: aparecen justo debajo del producto principal, normalmente sin negrita, con conceptos como "montaje", "transporte", "topes de goma", "tornillería", "carril", etc.).
+
+Analiza el PDF adjunto y devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones ni comentarios, con esta estructura exacta:
+
+{
+  "proveedor": "nombre de la empresa que emite el documento",
+  "numero_presupuesto": "número de presupuesto, oferta o pedido si existe, si no null",
+  "fecha_presupuesto": "fecha en formato YYYY-MM-DD, si no aparece usa null",
+  "items": [
+    {
+      "codigo_articulo": "código o referencia interna del artículo tal como aparece en el documento, o null",
+      "categoria": "DEBE ser EXACTAMENTE uno de estos valores textuales, sin variaciones: \\"Muelle de carga\\", \\"Minidock\\", \\"Puerta seccional\\", \\"Puerta rápida\\", \\"Puerta cortafuegos\\", \\"Accesorio muelle de carga\\", \\"Accesorio puerta seccional\\", \\"Accesorio puerta rápida\\", \\"Accesorio puerta cortafuegos\\", \\"Transporte\\", \\"Instalación\\"",
+      "tipo_producto": "ej. puerta rápida, puerta seccional, puerta cortafuegos, dock leveler, minidock, dock shelter, accesorio, transporte, montaje, u otro",
+      "marca": "usa EXACTAMENTE el mismo texto que el campo \\"proveedor\\" de este documento; la marca de todas las líneas es siempre el proveedor que emite el presupuesto, no un fabricante distinto",
+      "modelo": "modelo, referencia o descripción corta del producto",
+      "medidas": "dimensiones si aparecen, ej. 4000x4000mm, o null",
+      "precio_unitario": numero decimal JSON usando SIEMPRE punto como separador decimal y SIN separador de miles (ej. si el documento pone "5.426,64" debes escribir 5426.64; si pone "84,50" escribe 84.50),
+      "moneda": "EUR u otra",
+      "cantidad": numero entero o decimal, usa 1 si no se especifica,
+      "es_accesorio": true si esta línea es un accesorio, transporte, montaje o servicio asociado al producto principal anterior, false si es un producto principal,
+      "grupo": numero entero empezando en 1, que agrupa cada producto principal junto con sus accesorios asociados (todas las líneas de un mismo grupo comparten el mismo número),
+      "notas": "cualquier detalle relevante adicional, o null"
+    }
+  ]
+}
+
+Reglas para asignar "categoria" (aplícalas siempre, no dejes ninguna línea sin categoría):
+- Si el producto es un dock leveler o plataforma niveladora de muelle → "Muelle de carga".
+- Si es un minidock → "Minidock".
+- Si es una puerta seccional → "Puerta seccional".
+- Si es una puerta rápida (enrollable, de PVC, de alta velocidad) → "Puerta rápida".
+- Si es una puerta cortafuegos (EI, resistente al fuego) → "Puerta cortafuegos".
+- Si la línea es transporte de cualquier producto → "Transporte".
+- Si la línea es montaje, instalación o puesta en marcha → "Instalación".
+- Si la línea es un accesorio, componente o repuesto asociado a un producto principal (topes de goma, carriles, tornillería, mandos, fotocélulas, etc.), usa la categoría de accesorio correspondiente al tipo del producto principal de su mismo grupo: "Accesorio muelle de carga", "Accesorio puerta seccional", "Accesorio puerta rápida" o "Accesorio puerta cortafuegos".
+- Si tras aplicar estas reglas sigues sin poder determinar la categoría con certeza, elige la opción de la lista que más se aproxime; nunca dejes "categoria" vacío o fuera de la lista.
+
+Reglas importantes:
+- Los precios y cantidades deben ser SIEMPRE números JSON válidos (sin comas, sin símbolos de moneda, sin espacios). Convierte cualquier formato español de miles/decimales al estándar JSON.
+- No uses comas finales (trailing commas) en ningún array u objeto.
+- Incluye TODAS las líneas del documento, sin resumir ni omitir ninguna, aunque haya muchas.
+- Si un dato no aparece, usa null. No inventes datos.
+- MUY IMPORTANTE — validez del JSON: dentro de cualquier valor de texto (medidas, modelo, notas, etc.) NUNCA uses el símbolo de comilla doble (") suelto, ni siquiera para indicar pulgadas. Si el documento usa pulgadas (ej. 36" x 48"), escríbelo como "36 in x 48 in" o "36pulg x 48pulg", nunca con el símbolo " literal. Si necesitas incluir una comilla doble dentro de un texto por cualquier motivo, escápala como \\" . Antes de terminar tu respuesta, revisa mentalmente que cada string abra y cierre correctamente y que no haya comillas sueltas sin escapar.
+- Devuelve solo el JSON, nada más: ni texto antes, ni después, ni bloques de markdown.`;
