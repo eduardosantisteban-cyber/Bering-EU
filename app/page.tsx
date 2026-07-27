@@ -26,6 +26,7 @@ export default function HomePage() {
   const [filterCategoria, setFilterCategoria] = useState("");
   const [filterTipo, setFilterTipo] = useState("");
   const [filterMarca, setFilterMarca] = useState("");
+  const [filterYear, setFilterYear] = useState("");
   const [sortBy, setSortBy] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "fecha_presupuesto",
     dir: "desc",
@@ -77,12 +78,25 @@ export default function HomePage() {
     () => Array.from(new Set(rows.map((r) => r.marca).filter(Boolean))).sort() as string[],
     [rows]
   );
+  const aniosDisponibles = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rows
+            .map((r) => r.__rec.fecha_presupuesto)
+            .filter(Boolean)
+            .map((f) => String(f).slice(0, 4))
+        )
+      ).sort((a, b) => b.localeCompare(a)),
+    [rows]
+  );
 
   const filteredRows = useMemo(() => {
     let out = rows;
     if (filterCategoria) out = out.filter((r) => normalizeStr(r.categoria) === normalizeStr(filterCategoria));
     if (filterTipo) out = out.filter((r) => r.tipo_producto === filterTipo);
     if (filterMarca) out = out.filter((r) => r.marca === filterMarca);
+    if (filterYear) out = out.filter((r) => r.__rec.fecha_presupuesto?.startsWith(filterYear));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((r) =>
@@ -108,7 +122,7 @@ export default function HomePage() {
       return 0;
     });
     return out;
-  }, [rows, filterCategoria, filterTipo, filterMarca, search, sortBy]);
+  }, [rows, filterCategoria, filterTipo, filterMarca, filterYear, search, sortBy]);
 
   function toggleSort(key: SortKey) {
     setSortBy((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -193,12 +207,21 @@ export default function HomePage() {
               </option>
             ))}
           </select>
-          {(filterCategoria || filterTipo || filterMarca || search) && (
+          <select className={inputStyleSm} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+            <option value="">Todos los años</option>
+            {aniosDisponibles.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+          {(filterCategoria || filterTipo || filterMarca || filterYear || search) && (
             <button
               onClick={() => {
                 setFilterCategoria("");
                 setFilterTipo("");
                 setFilterMarca("");
+                setFilterYear("");
                 setSearch("");
               }}
               className="flex items-center gap-1 text-xs text-[#606060] hover:text-[#e83038]"
