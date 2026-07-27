@@ -17,6 +17,7 @@ interface QueueEntry {
   extracted: ExtractedPresupuesto | null;
   error: string | null;
   rawResponse: string | null;
+  driveUrl: string;
 }
 
 function localUid(): string {
@@ -98,6 +99,7 @@ export default function UploadModal({
       extracted: null,
       error: null,
       rawResponse: null,
+      driveUrl: "",
     }));
     setQueue((q) => [...q, ...entries]);
     (async () => {
@@ -139,6 +141,10 @@ export default function UploadModal({
         return { ...e, extracted: ex };
       })
     );
+  }
+
+  function updateDriveUrl(localId: string, value: string) {
+    patchEntry(localId, { driveUrl: value });
   }
 
   function updateItem(localId: string, idx: number, field: keyof ExtractedItem, value: unknown) {
@@ -186,7 +192,7 @@ export default function UploadModal({
         numero_presupuesto: entry.extracted.numero_presupuesto,
         fecha_presupuesto: entry.extracted.fecha_presupuesto,
         pdf_filename: entry.file.name,
-        drive_url: null,
+        drive_url: entry.driveUrl || null,
         items: entry.extracted.items,
         pdf_base64: entry.base64,
       });
@@ -238,6 +244,7 @@ export default function UploadModal({
                 onRetry={() => retryEntry(entry.localId)}
                 onSave={() => saveEntry(entry)}
                 onUpdateField={(field, value) => updateField(entry.localId, field, value)}
+                onUpdateDriveUrl={(value) => updateDriveUrl(entry.localId, value)}
                 onUpdateItem={(idx, field, value) => updateItem(entry.localId, idx, field, value)}
                 onAddItem={() => addItemRow(entry.localId)}
                 onRemoveItem={(idx) => removeItemRow(entry.localId, idx)}
@@ -256,6 +263,7 @@ function QueueEntryCard({
   onRetry,
   onSave,
   onUpdateField,
+  onUpdateDriveUrl,
   onUpdateItem,
   onAddItem,
   onRemoveItem,
@@ -265,6 +273,7 @@ function QueueEntryCard({
   onRetry: () => void;
   onSave: () => void;
   onUpdateField: (field: "proveedor" | "numero_presupuesto" | "fecha_presupuesto", value: string) => void;
+  onUpdateDriveUrl: (value: string) => void;
   onUpdateItem: (idx: number, field: keyof ExtractedItem, value: unknown) => void;
   onAddItem: () => void;
   onRemoveItem: (idx: number) => void;
@@ -303,7 +312,7 @@ function QueueEntryCard({
 
       {entry.status === "revision" && entry.extracted && (
         <div className="p-4">
-          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
             <Field label="Proveedor">
               <input
                 className={inputStyleSm + " w-full"}
@@ -324,6 +333,14 @@ function QueueEntryCard({
                 className={inputStyleSm + " w-full"}
                 value={entry.extracted.fecha_presupuesto ?? ""}
                 onChange={(e) => onUpdateField("fecha_presupuesto", e.target.value)}
+              />
+            </Field>
+            <Field label="Enlace Google Drive">
+              <input
+                className={inputStyleSm + " w-full"}
+                placeholder="https://drive.google.com/..."
+                value={entry.driveUrl}
+                onChange={(e) => onUpdateDriveUrl(e.target.value)}
               />
             </Field>
           </div>

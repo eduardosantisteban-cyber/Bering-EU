@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { ArrowUpDown, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upload, X } from "lucide-react";
 import type { Presupuesto } from "@/lib/types";
+import { CATEGORIAS } from "@/lib/constants";
 import { fetchPresupuestos, logout } from "@/lib/apiClient";
 import { fmtMoney, normalizeStr } from "@/lib/format";
 import { Button, Notice, inputStyleSm } from "./components/ui";
@@ -133,9 +135,12 @@ export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#e2e0dc] bg-white px-5 py-3">
-        <div>
-          <h1 className="text-lg font-semibold text-[#282828]">Bering EU — Presupuestos</h1>
-          <p className="text-xs text-[#606060]">{db.length} presupuestos · {rows.length} líneas</p>
+        <div className="flex items-center gap-3">
+          <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
+          <div>
+            <h1 className="text-lg font-semibold text-[#282828]">Presupuestos</h1>
+            <p className="text-xs text-[#606060]">{db.length} presupuestos · {rows.length} líneas</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost-light" onClick={() => setComparadorOpen(true)}>
@@ -166,7 +171,7 @@ export default function HomePage() {
           </div>
           <select className={inputStyleSm} value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)}>
             <option value="">Todas las categorías</option>
-            {Array.from(new Set(rows.map((r) => r.categoria).filter(Boolean))).map((c) => (
+            {CATEGORIAS.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
