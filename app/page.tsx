@@ -150,20 +150,20 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#e2e0dc] bg-white px-5 py-3">
+      <header className="sticky top-0 z-30 flex items-center justify-between bg-black px-5 py-3">
         <div className="flex items-center gap-3">
           <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
           <div>
-            <h1 className="text-lg font-semibold text-[#282828]">
+            <h1 className="text-lg font-semibold text-white">
               Presupuestos{" "}
               <button
                 onClick={() => setChangelogOpen(true)}
-                className="align-middle text-xs font-normal text-[#606060] hover:text-[#e83038] hover:underline"
+                className="align-middle text-xs font-normal text-white/60 hover:text-[#e83038] hover:underline"
               >
                 v{APP_VERSION}
               </button>
             </h1>
-            <p className="text-xs text-[#606060]">{db.length} presupuestos · {rows.length} líneas</p>
+            <p className="text-xs text-white/60">{db.length} presupuestos · {rows.length} líneas</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -176,7 +176,7 @@ export default function HomePage() {
           <Button variant="primary" onClick={() => setUploadOpen(true)}>
             <Upload size={15} /> Subir PDF
           </Button>
-          <button onClick={handleLogout} className="rounded p-2 text-[#606060] hover:bg-[#f5f4f2]" aria-label="Salir">
+          <button onClick={handleLogout} className="rounded p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Salir">
             <LogOut size={16} />
           </button>
         </div>
