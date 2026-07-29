@@ -9,8 +9,9 @@ export const BRAND = {
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  { version: "1.2.1", desc: "Cabecera del panel principal en negro" },
   { version: "1.2.0", desc: "Filtro por año en el listado principal" },
   {
     version: "1.1.0",
