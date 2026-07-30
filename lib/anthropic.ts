@@ -18,12 +18,28 @@ function tryParseJSON(raw: string): unknown {
   } catch {
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      let candidate = raw.slice(start, end + 1);
-      candidate = candidate.replace(/,\s*([}\]])/g, "$1");
-      return JSON.parse(candidate);
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("No se encontró un objeto JSON en la respuesta");
     }
-    throw new Error("No se encontró un objeto JSON en la respuesta");
+    let candidate = raw.slice(start, end + 1);
+    candidate = candidate.replace(/,\s*([}\]])/g, "$1");
+    try {
+      return JSON.parse(candidate);
+    } catch (e2) {
+      // Reparación adicional: inserta comas que falten entre elementos
+      // consecutivos (fallo típico de la IA en respuestas JSON largas,
+      // p. ej. presupuestos con muchas líneas o descripciones extensas).
+      let repaired = candidate
+        .replace(/}\s*{/g, "},{")
+        .replace(/]\s*\[/g, "],[")
+        .replace(/"\s*\n\s*"/g, '",\n"');
+      repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        throw e2;
+      }
+    }
   }
 }
 
@@ -50,7 +66,7 @@ async function extractOnce(base64Pdf: string): Promise<ExtractedPresupuesto> {
   const client = getClient();
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: 16000,
     messages: [
       {
         role: "user",

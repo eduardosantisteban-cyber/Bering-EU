@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { extractFromPdfWithRetry } from "@/lib/anthropic";
+import { downloadPdfAsBase64 } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const base64 = typeof body?.base64 === "string" ? body.base64 : null;
-  if (!base64) {
-    return NextResponse.json({ error: "Falta el PDF (base64)" }, { status: 400 });
+  const storagePath = typeof body?.storagePath === "string" ? body.storagePath : null;
+  if (!storagePath) {
+    return NextResponse.json({ error: "Falta storagePath del PDF ya subido" }, { status: 400 });
   }
 
   try {
+    const base64 = await downloadPdfAsBase64(storagePath);
     const extracted = await extractFromPdfWithRetry(base64);
     return NextResponse.json(extracted);
   } catch (err) {

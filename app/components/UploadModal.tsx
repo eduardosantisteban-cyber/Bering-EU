@@ -2,18 +2,20 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, X } from "lucide-react";
-import { CATEGORIAS } from "@/lib/constants";
+import { CATEGORIAS, PDF_BUCKET } from "@/lib/constants";
 import type { ExtractedPresupuesto, ExtractedItem } from "@/lib/types";
-import { createPresupuesto, extractPdf } from "@/lib/apiClient";
+import { createPresupuesto, discardUploadedPdf, extractPdf, requestUploadUrl } from "@/lib/apiClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 import { Button, Field, Overlay, ModalHeader, inputStyleSm } from "./ui";
 
-type Status = "pendiente" | "leyendo" | "procesando" | "revision" | "guardando" | "error";
+type Status = "pendiente" | "subiendo" | "procesando" | "revision" | "guardando" | "error";
 
 interface QueueEntry {
   localId: string;
   file: File;
   status: Status;
-  base64: string | null;
+  presupuestoId: string | null;
+  storagePath: string | null;
   extracted: ExtractedPresupuesto | null;
   error: string | null;
   rawResponse: string | null;
@@ -41,13 +43,13 @@ function emptyItem(grupo: number): ExtractedItem {
   };
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve((r.result as string).split(",")[1]);
-    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
-    r.readAsDataURL(file);
+async function uploadFileDirect(file: File): Promise<{ id: string; path: string }> {
+  const { id, path, token } = await requestUploadUrl(file.name);
+  const { error } = await supabaseBrowser().storage.from(PDF_BUCKET).uploadToSignedUrl(path, token, file, {
+    contentType: "application/pdf",
   });
+  if (error) throw new Error("No se pudo subir el PDF: " + error.message);
+  return { id, path };
 }
 
 export default function UploadModal({
@@ -68,11 +70,11 @@ export default function UploadModal({
 
   const processEntry = useCallback(
     async (entry: QueueEntry) => {
-      patchEntry(entry.localId, { status: "leyendo" });
+      patchEntry(entry.localId, { status: "subiendo" });
       try {
-        const base64 = await fileToBase64(entry.file);
-        patchEntry(entry.localId, { status: "procesando", base64 });
-        const extracted = await extractPdf(base64);
+        const { id, path } = await uploadFileDirect(entry.file);
+        patchEntry(entry.localId, { status: "procesando", presupuestoId: id, storagePath: path });
+        const extracted = await extractPdf(path);
         patchEntry(entry.localId, { status: "revision", extracted });
       } catch (err) {
         const e = err as Error & { rawResponse?: string };
@@ -95,7 +97,8 @@ export default function UploadModal({
       localId: localUid(),
       file,
       status: "pendiente",
-      base64: null,
+      presupuestoId: null,
+      storagePath: null,
       extracted: null,
       error: null,
       rawResponse: null,
@@ -111,10 +114,17 @@ export default function UploadModal({
 
   async function retryEntry(localId: string) {
     const entry = queue.find((e) => e.localId === localId);
-    if (!entry || !entry.base64) return;
+    if (!entry) return;
     patchEntry(localId, { status: "procesando", error: null, rawResponse: null });
     try {
-      const extracted = await extractPdf(entry.base64);
+      // Si el PDF ya se subió (el fallo fue solo en la extracción, no en la
+      // subida), no hace falta volver a subirlo.
+      const { id, path } =
+        entry.storagePath && entry.presupuestoId
+          ? { id: entry.presupuestoId, path: entry.storagePath }
+          : await uploadFileDirect(entry.file);
+      if (!entry.storagePath) patchEntry(localId, { presupuestoId: id, storagePath: path });
+      const extracted = await extractPdf(path);
       patchEntry(localId, { status: "revision", extracted });
     } catch (err) {
       const e = err as Error & { rawResponse?: string };
@@ -127,7 +137,11 @@ export default function UploadModal({
   }
 
   function discardEntry(localId: string) {
+    const entry = queue.find((e) => e.localId === localId);
     setQueue((q) => q.filter((e) => e.localId !== localId));
+    if (entry?.storagePath) {
+      discardUploadedPdf(entry.storagePath);
+    }
   }
 
   function updateField(localId: string, field: "proveedor" | "numero_presupuesto" | "fecha_presupuesto", value: string) {
@@ -184,17 +198,18 @@ export default function UploadModal({
   }
 
   async function saveEntry(entry: QueueEntry) {
-    if (!entry.extracted || !entry.base64) return;
+    if (!entry.extracted || !entry.storagePath || !entry.presupuestoId) return;
     patchEntry(entry.localId, { status: "guardando" });
     try {
       await createPresupuesto({
+        id: entry.presupuestoId,
         proveedor: entry.extracted.proveedor || "",
         numero_presupuesto: entry.extracted.numero_presupuesto,
         fecha_presupuesto: entry.extracted.fecha_presupuesto,
         pdf_filename: entry.file.name,
         drive_url: entry.driveUrl || null,
         items: entry.extracted.items,
-        pdf_base64: entry.base64,
+        pdf_storage_path: entry.storagePath,
       });
       discardEntry(entry.localId);
       onSaved(entry.extracted.proveedor || "proveedor");
@@ -278,7 +293,7 @@ function QueueEntryCard({
   onAddItem: () => void;
   onRemoveItem: (idx: number) => void;
 }) {
-  const busy = entry.status === "leyendo" || entry.status === "procesando" || entry.status === "guardando";
+  const busy = entry.status === "subiendo" || entry.status === "procesando" || entry.status === "guardando";
 
   return (
     <div className="rounded-lg border border-[#e2e0dc]">
@@ -288,7 +303,7 @@ function QueueEntryCard({
           {busy && (
             <span className="flex items-center gap-1 text-xs text-[#606060]">
               <Loader2 size={14} className="animate-spin" />
-              {entry.status === "leyendo" && "Leyendo…"}
+              {entry.status === "subiendo" && "Subiendo…"}
               {entry.status === "procesando" && "Analizando con IA…"}
               {entry.status === "guardando" && "Guardando…"}
             </span>

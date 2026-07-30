@@ -13,23 +13,53 @@ export async function fetchPresupuestos(): Promise<Presupuesto[]> {
   return jsonOrThrow(res);
 }
 
-export async function extractPdf(base64: string): Promise<ExtractedPresupuesto> {
+export async function extractPdf(storagePath: string): Promise<ExtractedPresupuesto> {
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ base64 }),
+    body: JSON.stringify({ storagePath }),
   });
   return jsonOrThrow(res);
 }
 
+export interface UploadUrlResult {
+  id: string;
+  path: string;
+  token: string;
+}
+
+/** Pide una URL de subida firmada de un solo uso (el PDF se sube directo a Supabase Storage, sin pasar por el body de la función). */
+export async function requestUploadUrl(filename: string): Promise<UploadUrlResult> {
+  const res = await fetch("/api/pdf/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename }),
+  });
+  return jsonOrThrow(res);
+}
+
+/** Borra un PDF subido que nunca se llegó a guardar como presupuesto (best-effort). */
+export async function discardUploadedPdf(path: string): Promise<void> {
+  try {
+    await fetch("/api/pdf/upload-url", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+  } catch {
+    // best-effort: si falla, se queda un archivo huérfano en Storage, no es crítico.
+  }
+}
+
 export interface CreatePresupuestoInput {
+  id?: string;
   proveedor: string;
   numero_presupuesto: string | null;
   fecha_presupuesto: string | null;
   pdf_filename: string | null;
   drive_url: string | null;
   items: ExtractedPresupuesto["items"];
-  pdf_base64?: string | null;
+  pdf_storage_path?: string | null;
 }
 
 export async function createPresupuesto(input: CreatePresupuestoInput): Promise<Presupuesto> {

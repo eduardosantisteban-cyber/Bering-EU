@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createPresupuesto, listPresupuestos } from "@/lib/db";
-import { PDF_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
 import { uid } from "@/lib/id";
 import type { ExtractedItem } from "@/lib/types";
 
@@ -17,13 +16,14 @@ export async function GET() {
 }
 
 interface CreateBody {
+  id?: string;
   proveedor: string;
   numero_presupuesto: string | null;
   fecha_presupuesto: string | null;
   pdf_filename: string | null;
   drive_url: string | null;
   items: ExtractedItem[];
-  pdf_base64?: string | null;
+  pdf_storage_path?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -32,22 +32,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
   }
 
-  const id = uid();
-  let pdfStoragePath: string | null = null;
+  // El PDF ya se subió a Supabase Storage directamente desde el navegador
+  // (ver /api/pdf/upload-url) antes de llegar aquí, así que "id" es el
+  // mismo que se usó como carpeta de esa subida.
+  const id = body.id || uid();
 
   try {
-    if (body.pdf_base64) {
-      const db = supabaseAdmin();
-      const filename = body.pdf_filename || "documento.pdf";
-      const path = `${id}/${filename}`;
-      const bytes = Buffer.from(body.pdf_base64, "base64");
-      const { error: uploadError } = await db.storage
-        .from(PDF_BUCKET)
-        .upload(path, bytes, { contentType: "application/pdf", upsert: false });
-      if (uploadError) throw uploadError;
-      pdfStoragePath = path;
-    }
-
     const saved = await createPresupuesto(
       {
         id,
@@ -56,7 +46,7 @@ export async function POST(request: Request) {
         fecha_presupuesto: body.fecha_presupuesto ?? null,
         pdf_filename: body.pdf_filename ?? null,
         drive_url: body.drive_url ?? null,
-        pdf_storage_path: pdfStoragePath,
+        pdf_storage_path: body.pdf_storage_path ?? null,
       },
       body.items.map((it) => ({
         id: uid(),

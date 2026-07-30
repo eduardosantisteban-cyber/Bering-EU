@@ -7,10 +7,16 @@ export const BRAND = {
   border: "#e2e0dc",
 };
 
+export const PDF_BUCKET = "presupuestos-pdfs";
+
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.3.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.3.0",
+    desc: "Los PDF se suben directo a Supabase Storage desde el navegador (evita el límite de tamaño de las funciones de Vercel); prompt de extracción reforzado para presupuestos con precios agrupados por partida y páginas de fichas técnicas/condiciones generales; reparación automática de JSON incompleto de la IA",
+  },
   { version: "1.2.1", desc: "Cabecera del panel principal en negro" },
   { version: "1.2.0", desc: "Filtro por año en el listado principal" },
   {
@@ -41,6 +47,13 @@ export type Categoria = (typeof CATEGORIAS)[number];
 
 export const EXTRACTION_PROMPT = `Eres un asistente que extrae datos de presupuestos, ofertas o confirmaciones de pedido de proveedores de puertas industriales y equipos de muelle de carga. Estos documentos vienen de proveedores distintos (Novoferm, Cadlan, Hörmann, Assa Abloy, etc.) con formatos de tabla muy variados: a veces es una lista plana de productos, y otras veces cada producto principal viene seguido de líneas de accesorios, transporte o montaje asociadas a él (identifícalas por contexto: aparecen justo debajo del producto principal, normalmente sin negrita, con conceptos como "montaje", "transporte", "topes de goma", "tornillería", "carril", etc.).
 
+IMPORTANTE — ámbito de páginas: el PDF puede incluir, además de la tabla de presupuesto en sí, páginas adicionales que NO debes usar para generar items:
+- Páginas de condiciones generales de venta, alquiler o montaje, confirmación de pedido, datos de facturación/entrega en blanco, declaraciones de IVA, o cualquier texto legal/contractual sin tabla de precios.
+- Páginas tipo "descripción completa de los productos ofertados", fichas técnicas, características de materiales, composición, homologaciones o normativas — describen productos con mucho detalle pero NUNCA incluyen columnas de cantidad/precio/importe por línea.
+Identifica únicamente las páginas que contienen la tabla real del presupuesto (normalmente con cabeceras como "Código", "Descripción", "Unidades"/"Cantidad", "Precio", "Total"/"Importe", y un resumen final de Base imponible/IVA/Total). Extrae los items EXCLUSIVAMENTE de esas filas.
+
+Algunos documentos agrupan un producto junto con sus componentes en un "paquete" o "partida" con UN ÚNICO precio total al final del grupo (ej. "Importe total partida ALUMROLL 3 X 3: 2.856,27 €"), en vez de precio por cada línea individual. En ese caso: crea un único item principal para el grupo con precio_unitario = ese importe total, y crea items adicionales con es_accesorio: true para cada componente relevante (motor, guías, lona, cuadro de control, etc.) usando precio_unitario: null en esos accesorios, ya que no tienen precio propio — todos comparten el mismo "grupo" que el item principal. No repartas el importe total entre las sub-líneas ni inventes precios individuales para ellas.
+
 Analiza el PDF adjunto y devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones ni comentarios, con esta estructura exacta:
 
 {
@@ -60,7 +73,7 @@ Analiza el PDF adjunto y devuelve ÚNICAMENTE un objeto JSON válido, sin texto 
       "cantidad": numero entero o decimal, usa 1 si no se especifica,
       "es_accesorio": true si esta línea es un accesorio, transporte, montaje o servicio asociado al producto principal anterior, false si es un producto principal,
       "grupo": numero entero empezando en 1, que agrupa cada producto principal junto con sus accesorios asociados (todas las líneas de un mismo grupo comparten el mismo número),
-      "notas": "cualquier detalle relevante adicional, o null"
+      "notas": "cualquier detalle relevante adicional QUE YA APAREZCA en la propia fila de la tabla de presupuesto (nunca copies texto de fichas técnicas de otras páginas; resume en una frase breve, no pegues párrafos completos), o null"
     }
   ]
 }
@@ -79,7 +92,8 @@ Reglas para asignar "categoria" (aplícalas siempre, no dejes ninguna línea sin
 Reglas importantes:
 - Los precios y cantidades deben ser SIEMPRE números JSON válidos (sin comas, sin símbolos de moneda, sin espacios). Convierte cualquier formato español de miles/decimales al estándar JSON.
 - No uses comas finales (trailing commas) en ningún array u objeto.
-- Incluye TODAS las líneas del documento, sin resumir ni omitir ninguna, aunque haya muchas.
+- Incluye TODAS las líneas de la tabla de presupuesto, sin resumir ni omitir ninguna, aunque haya muchas.
+- NO generes ningún item a partir de páginas de condiciones generales, confirmación de pedido, o fichas técnicas/descripción completa de productos, aunque mencionen modelos, medidas o características — si una página no tiene una fila con cantidad y precio asociados, ignórala por completo.
 - Si un dato no aparece, usa null. No inventes datos.
 - MUY IMPORTANTE — validez del JSON: dentro de cualquier valor de texto (medidas, modelo, notas, etc.) NUNCA uses el símbolo de comilla doble (") suelto, ni siquiera para indicar pulgadas. Si el documento usa pulgadas (ej. 36" x 48"), escríbelo como "36 in x 48 in" o "36pulg x 48pulg", nunca con el símbolo " literal. Si necesitas incluir una comilla doble dentro de un texto por cualquier motivo, escápala como \\" . Antes de terminar tu respuesta, revisa mentalmente que cada string abra y cierre correctamente y que no haya comillas sueltas sin escapar.
 - Devuelve solo el JSON, nada más: ni texto antes, ni después, ni bloques de markdown.`;
