@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.3.2";
+export const APP_VERSION = "1.3.3";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.3.3",
+    desc: "Columna de número de presupuesto en el listado principal",
+  },
   {
     version: "1.3.2",
     desc: "La consolidación de marcas ahora también ignora guiones, sufijos societarios (SA, SL, SLU, BV...) y diferencias de espaciado interno, para que variantes como \"NOVOFERM-ALSAL S.A.\", \"TRANSMAVE,S.L.\" o \"VanWijk Nederland bv\" se agrupen correctamente",

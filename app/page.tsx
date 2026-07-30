@@ -274,6 +274,7 @@ export default function HomePage() {
                   <SortableTh label="Precio" sortKey="precio_unitario" sortBy={sortBy} onSort={toggleSort} align="right" />
                   <th className="px-3 py-2 text-right">Cant.</th>
                   <SortableTh label="Fecha" sortKey="fecha_presupuesto" sortBy={sortBy} onSort={toggleSort} />
+                  <th className="px-3 py-2">Nº presupuesto</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -296,6 +297,7 @@ export default function HomePage() {
                         ? new Date(r.__rec.fecha_presupuesto).toLocaleDateString("es-ES")
                         : "—"}
                     </td>
+                    <td className="px-3 py-2 text-[#606060]">{r.__rec.numero_presupuesto || "—"}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={(e) => {
