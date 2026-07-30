@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { EXTRACTION_PROMPT, CATEGORIAS } from "./constants";
+import { tryParseJSON } from "./jsonRepair";
 import type { ExtractedPresupuesto } from "./types";
 
 const MODEL = "claude-sonnet-5";
@@ -10,37 +11,6 @@ function getClient() {
     throw new Error("Falta ANTHROPIC_API_KEY en las variables de entorno");
   }
   return new Anthropic({ apiKey });
-}
-
-function tryParseJSON(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error("No se encontró un objeto JSON en la respuesta");
-    }
-    let candidate = raw.slice(start, end + 1);
-    candidate = candidate.replace(/,\s*([}\]])/g, "$1");
-    try {
-      return JSON.parse(candidate);
-    } catch (e2) {
-      // Reparación adicional: inserta comas que falten entre elementos
-      // consecutivos (fallo típico de la IA en respuestas JSON largas,
-      // p. ej. presupuestos con muchas líneas o descripciones extensas).
-      let repaired = candidate
-        .replace(/}\s*{/g, "},{")
-        .replace(/]\s*\[/g, "],[")
-        .replace(/"\s*\n\s*"/g, '",\n"');
-      repaired = repaired.replace(/,\s*([}\]])/g, "$1");
-      try {
-        return JSON.parse(repaired);
-      } catch {
-        throw e2;
-      }
-    }
-  }
 }
 
 function normalizeStr(s: unknown): string {

@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { Copy, FileSpreadsheet, Trash2, X } from "lucide-react";
 import type { FlatRow } from "./types";
 import { fmtMoney } from "@/lib/format";
+import { priceLine, computeTotals } from "@/lib/pricing";
 import { Button, inputStyleSm } from "./ui";
 
 export interface CartLine {
@@ -33,18 +34,14 @@ export default function CotizadorPanel({
         .map((c) => {
           const row = rows.find((r) => r.id === c.itemId);
           if (!row) return null;
-          const markup = Number(c.markup) || 0;
-          const precioCoste = Number(row.precio_unitario) || 0;
-          const precioVenta = precioCoste * (1 + markup / 100);
-          return { ...row, cantidad: c.cantidad, markup, precioCoste, precioVenta };
+          const { precioCoste, precioVenta } = priceLine(row.precio_unitario, c.markup);
+          return { ...row, cantidad: c.cantidad, markup: Number(c.markup) || 0, precioCoste, precioVenta };
         })
         .filter((r): r is NonNullable<typeof r> => r !== null),
     [cart, rows]
   );
 
-  const subtotal = cartRows.reduce((s, r) => s + r.precioVenta * (Number(r.cantidad) || 0), 0);
-  const iva = subtotal * 0.21;
-  const total = subtotal + iva;
+  const { subtotal, iva, total } = useMemo(() => computeTotals(cartRows), [cartRows]);
 
   function setQty(itemId: string, qty: number) {
     setCart((c) => c.map((x) => (x.itemId === itemId ? { ...x, cantidad: qty } : x)));

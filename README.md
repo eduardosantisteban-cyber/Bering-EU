@@ -71,6 +71,13 @@ npm run dev
 
 Abre [http://localhost:3000](http://localhost:3000).
 
+Tests (lógica pura: normalización de marcas, reparación del JSON de la IA,
+cálculo de precios/IVA del cotizador):
+
+```bash
+npm run test
+```
+
 ### 5. Despliegue en Vercel
 
 1. Importa el repositorio en Vercel.

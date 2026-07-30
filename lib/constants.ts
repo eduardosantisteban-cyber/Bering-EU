@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.3.3";
+export const APP_VERSION = "1.4.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.4.0",
+    desc: "Tests automáticos (Vitest) para la normalización de marcas, la reparación del JSON de la IA y el cálculo de precios/IVA del cotizador — los tres sitios donde ya hemos tenido bugs reales",
+  },
   {
     version: "1.3.3",
     desc: "Columna de número de presupuesto en el listado principal",
