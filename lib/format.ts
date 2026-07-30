@@ -18,3 +18,11 @@ export function normalizeStr(s: unknown): string {
     .trim()
     .toLowerCase();
 }
+
+// Clave de comparacion para marcas/proveedores: quita puntos y comas ademas
+// de acentos/mayusculas, para que "NOVOFERM ALSAL, SA" y "NOVOFERM ALSAL,
+// S.A." se traten como la misma marca en filtros y en el comparador, sin
+// tocar el texto tal como esta guardado en la base de datos.
+export function normalizeMarca(s: unknown): string {
+  return normalizeStr(s).replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+}

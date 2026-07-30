@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.3.1";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.3.1",
+    desc: "Las variantes de escritura de una misma marca/proveedor (p. ej. \"NOVOFERM ALSAL, SA\" y \"NOVOFERM ALSAL, S.A.\") se consolidan en el filtro de marcas y en el contador de proveedores del comparador",
+  },
   {
     version: "1.3.0",
     desc: "Los PDF se suben directo a Supabase Storage desde el navegador (evita el límite de tamaño de las funciones de Vercel); prompt de extracción reforzado para presupuestos con precios agrupados por partida y páginas de fichas técnicas/condiciones generales; reparación automática de JSON incompleto de la IA",

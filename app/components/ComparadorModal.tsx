@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { CATEGORIAS } from "@/lib/constants";
 import type { FlatRow } from "./types";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, normalizeMarca } from "@/lib/format";
 import { ModalHeader, Overlay, inputStyleSm } from "./ui";
 
 export default function ComparadorModal({
@@ -36,7 +36,9 @@ export default function ComparadorModal({
     const min = Math.min(...precios);
     const max = Math.max(...precios);
     const media = precios.reduce((a, b) => a + b, 0) / precios.length;
-    const proveedores = new Set(filtered.map((r) => r.__rec.proveedor));
+    // Normaliza para no contar dos veces la misma empresa por una coma o
+    // un punto distinto (p. ej. "NOVOFERM ALSAL, SA" vs "..., S.A.").
+    const proveedores = new Set(filtered.map((r) => normalizeMarca(r.__rec.proveedor)));
     return { min, max, media, nProveedores: proveedores.size };
   }, [filtered]);
 

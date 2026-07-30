@@ -6,7 +6,7 @@ import { ArrowUpDown, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upl
 import type { Presupuesto } from "@/lib/types";
 import { APP_VERSION, CATEGORIAS } from "@/lib/constants";
 import { fetchPresupuestos, logout } from "@/lib/apiClient";
-import { fmtMoney, normalizeStr } from "@/lib/format";
+import { fmtMoney, normalizeMarca, normalizeStr } from "@/lib/format";
 import { Button, Notice, inputStyleSm } from "./components/ui";
 import type { FlatRow } from "./components/types";
 import UploadModal from "./components/UploadModal";
@@ -76,10 +76,19 @@ export default function HomePage() {
     () => Array.from(new Set(rows.map((r) => r.tipo_producto).filter(Boolean))).sort() as string[],
     [rows]
   );
-  const marcasDisponibles = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.marca).filter(Boolean))).sort() as string[],
-    [rows]
-  );
+  const marcasDisponibles = useMemo(() => {
+    // Agrupa variantes de la misma marca (p. ej. "NOVOFERM ALSAL, SA" y
+    // "NOVOFERM ALSAL, S.A.") bajo una sola entrada del filtro, sin tocar
+    // el texto tal como está guardado en cada línea.
+    const map = new Map<string, string>(); // clave normalizada -> primera variante vista
+    for (const r of rows) {
+      if (!r.marca) continue;
+      const key = normalizeMarca(r.marca);
+      if (!key || map.has(key)) continue;
+      map.set(key, r.marca);
+    }
+    return Array.from(map.values()).sort();
+  }, [rows]);
   const aniosDisponibles = useMemo(
     () =>
       Array.from(
@@ -97,7 +106,7 @@ export default function HomePage() {
     let out = rows;
     if (filterCategoria) out = out.filter((r) => normalizeStr(r.categoria) === normalizeStr(filterCategoria));
     if (filterTipo) out = out.filter((r) => r.tipo_producto === filterTipo);
-    if (filterMarca) out = out.filter((r) => r.marca === filterMarca);
+    if (filterMarca) out = out.filter((r) => normalizeMarca(r.marca) === normalizeMarca(filterMarca));
     if (filterYear) out = out.filter((r) => r.__rec.fecha_presupuesto?.startsWith(filterYear));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
