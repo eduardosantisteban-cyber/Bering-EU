@@ -19,10 +19,29 @@ export function normalizeStr(s: unknown): string {
     .toLowerCase();
 }
 
-// Clave de comparacion para marcas/proveedores: quita puntos y comas ademas
-// de acentos/mayusculas, para que "NOVOFERM ALSAL, SA" y "NOVOFERM ALSAL,
-// S.A." se traten como la misma marca en filtros y en el comparador, sin
-// tocar el texto tal como esta guardado en la base de datos.
+// Formas societarias comunes que aparecen pegadas al final del nombre de
+// una marca/proveedor y que no deben distinguir una marca de otra
+// (ordenadas para que las mas largas se prueben antes que sus prefijos,
+// p. ej. "slu" antes que "sl").
+const LEGAL_SUFFIXES =
+  "sau|slu|sa|sl|scoop|sc|srl|bv|nv|gmbh|ltd|plc|inc|corp|co";
+const LEGAL_SUFFIX_RE = new RegExp(`\\s+(${LEGAL_SUFFIXES})$`, "i");
+
+/**
+ * Clave de comparacion para marcas/proveedores: quita acentos/mayusculas,
+ * puntos, comas y guiones, el sufijo societario final (SA, S.A., SL, SLU,
+ * BV...) y cualquier diferencia de espaciado interno. Con esto
+ * "NOVOFERM ALSAL, SA", "NOVOFERM-ALSAL S.A." y "NOVOFERM ALSAL" (o
+ * "Van Wijk Nederland BV" y "VanWijk Nederland bv") se tratan como la misma
+ * marca en filtros y en el comparador, sin tocar el texto tal como esta
+ * guardado en la base de datos.
+ */
 export function normalizeMarca(s: unknown): string {
-  return normalizeStr(s).replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+  let t = normalizeStr(s)
+    .replace(/\./g, "") // "S.A." -> "SA" (las siglas se juntan, no se separan)
+    .replace(/[,-]/g, " ") // comas y guiones SI actuan como separador de palabras
+    .replace(/\s+/g, " ")
+    .trim();
+  t = t.replace(LEGAL_SUFFIX_RE, "").trim();
+  return t.replace(/\s+/g, ""); // ignora tambien espaciado interno (p. ej. "Van Wijk" vs "VanWijk")
 }
