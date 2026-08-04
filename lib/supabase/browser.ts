@@ -11,14 +11,19 @@ let client: ReturnType<typeof createClient> | null = null;
 
 export function supabaseBrowser() {
   if (!client) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anonKey) {
+    if (!rawUrl || !anonKey) {
       throw new Error(
         "Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY en las variables de entorno"
       );
     }
-    client = createClient(url, anonKey, { auth: { persistSession: false } });
+    // Una barra "/" final (fácil de copiar sin querer al pegar la URL en
+    // Vercel) hace que el cliente construya rutas de Storage con doble
+    // barra, que Supabase rechaza con "Invalid path specified in request
+    // URL" — se quita aquí como red de seguridad.
+    const url = rawUrl.trim().replace(/\/+$/, "");
+    client = createClient(url, anonKey.trim(), { auth: { persistSession: false } });
   }
   return client;
 }

@@ -48,7 +48,7 @@ async function uploadFileDirect(file: File): Promise<{ id: string; path: string 
   const { error } = await supabaseBrowser().storage.from(PDF_BUCKET).uploadToSignedUrl(path, token, file, {
     contentType: "application/pdf",
   });
-  if (error) throw new Error("No se pudo subir el PDF: " + error.message);
+  if (error) throw new Error(`No se pudo subir el PDF a "${path}": ${error.message}`);
   return { id, path };
 }
 

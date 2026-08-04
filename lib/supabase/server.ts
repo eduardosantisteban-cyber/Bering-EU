@@ -11,14 +11,17 @@ import { PDF_BUCKET } from "@/lib/constants";
 // Vercel tienen un límite de tamaño de payload (~4.5MB) que un PDF de
 // varias páginas puede superar fácilmente.
 export function supabaseAdmin() {
-  const url = process.env.SUPABASE_URL;
+  const rawUrl = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
+  if (!rawUrl || !key) {
     throw new Error(
       "Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en las variables de entorno"
     );
   }
-  return createClient(url, key, {
+  // Ver la misma normalización en lib/supabase/browser.ts: una barra "/"
+  // final en la URL produce rutas de Storage con doble barra.
+  const url = rawUrl.trim().replace(/\/+$/, "");
+  return createClient(url, key.trim(), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

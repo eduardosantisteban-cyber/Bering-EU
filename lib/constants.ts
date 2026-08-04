@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.4.1";
+export const APP_VERSION = "1.4.2";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.4.2",
+    desc: "Normaliza la URL de Supabase (quita una posible barra final) al construir el cliente, para evitar rutas de Storage inválidas; el error de subida ahora también muestra la ruta afectada",
+  },
   {
     version: "1.4.1",
     desc: "Corrige la subida de PDF con espacios u otros caracteres en el nombre del archivo (fallaba con \"Invalid path specified in request URL\" en Supabase Storage)",
