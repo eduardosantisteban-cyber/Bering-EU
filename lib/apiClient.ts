@@ -25,7 +25,7 @@ export async function extractPdf(storagePath: string): Promise<ExtractedPresupue
 export interface UploadUrlResult {
   id: string;
   path: string;
-  token: string;
+  signedUrl: string;
 }
 
 /** Pide una URL de subida firmada de un solo uso (el PDF se sube directo a Supabase Storage, sin pasar por el body de la función). */

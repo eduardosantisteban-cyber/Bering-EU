@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (error || !data) {
       throw error || new Error("Respuesta vacía de Supabase Storage");
     }
-    return NextResponse.json({ id, path: data.path, token: data.token });
+    return NextResponse.json({ id, path: data.path, signedUrl: data.signedUrl });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "No se pudo preparar la subida del PDF" },

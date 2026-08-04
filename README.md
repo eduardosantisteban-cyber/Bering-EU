@@ -29,17 +29,16 @@ Copia `.env.example` a `.env.local` y rellena:
 | `SESSION_SECRET` | Cadena aleatoria larga, p. ej. `openssl rand -hex 32` |
 | `SUPABASE_URL` | Panel de Supabase → Settings → API → Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Panel de Supabase → Settings → API → `service_role` (secreta, nunca la publiques) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Igual que `SUPABASE_URL` (se expone al navegador, es pública) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Panel de Supabase → Settings → API → `anon` `public` (segura de exponer) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys |
 
-Las dos variables `NEXT_PUBLIC_*` se usan solo para que el navegador suba el
-PDF directo a Supabase Storage con una URL de subida firmada de un solo uso
-(así se evita el límite de tamaño de payload de las funciones de Vercel,
-~4.5MB, que un PDF de varias páginas supera fácilmente). La clave `anon` no
-da acceso a nada por sí sola: las tablas están protegidas por RLS sin
-políticas, y en Storage solo permite completar una subida que el backend ya
-autorizó con la service role key.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` se usa solo para que el navegador suba el
+PDF directo a Supabase Storage con un PUT normal a una URL de subida firmada
+de un solo uso (así se evita el límite de tamaño de payload de las
+funciones de Vercel, ~4.5MB, que un PDF de varias páginas supera
+fácilmente). La clave `anon` no da acceso a nada por sí sola: las tablas
+están protegidas por RLS sin políticas, y en Storage solo permite completar
+una subida que el backend ya autorizó con la service role key.
 
 ### 2. Base de datos
 
@@ -101,7 +100,6 @@ lib/
   anthropic.ts           # llamada a la API de Anthropic + prompt de extracción
   db.ts                  # acceso a Supabase (listar/crear/actualizar/borrar)
   auth.ts                # verificación de contraseña y cookie de sesión
-  supabase/browser.ts    # cliente de Supabase del navegador, solo para subir el PDF
   supabase/server.ts     # cliente de Supabase del servidor (service role)
 supabase/migrations/      # esquema SQL
 scripts/seed.mjs          # importación del backup JSON antiguo

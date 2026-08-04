@@ -2,10 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, X } from "lucide-react";
-import { CATEGORIAS, PDF_BUCKET } from "@/lib/constants";
+import { CATEGORIAS } from "@/lib/constants";
 import type { ExtractedPresupuesto, ExtractedItem } from "@/lib/types";
 import { createPresupuesto, discardUploadedPdf, extractPdf, requestUploadUrl } from "@/lib/apiClient";
-import { supabaseBrowser } from "@/lib/supabase/browser";
 import { Button, Field, Overlay, ModalHeader, inputStyleSm } from "./ui";
 
 type Status = "pendiente" | "subiendo" | "procesando" | "revision" | "guardando" | "error";
@@ -44,11 +43,29 @@ function emptyItem(grupo: number): ExtractedItem {
 }
 
 async function uploadFileDirect(file: File): Promise<{ id: string; path: string }> {
-  const { id, path, token } = await requestUploadUrl(file.name);
-  const { error } = await supabaseBrowser().storage.from(PDF_BUCKET).uploadToSignedUrl(path, token, file, {
-    contentType: "application/pdf",
+  const { id, path, signedUrl } = await requestUploadUrl(file.name);
+
+  // PUT directo a la URL que ya firmó y validó Supabase en el servidor,
+  // sin que el navegador tenga que reconstruirla a partir de la ruta y el
+  // token (eso es lo que daba "Invalid path specified in request URL" con
+  // el cliente de Supabase, sin llegar a identificar la causa exacta).
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    throw new Error("Falta NEXT_PUBLIC_SUPABASE_ANON_KEY en las variables de entorno");
+  }
+  const res = await fetch(signedUrl, {
+    method: "PUT",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/pdf",
+    },
+    body: file,
   });
-  if (error) throw new Error(`No se pudo subir el PDF a "${path}": ${error.message}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`No se pudo subir el PDF (HTTP ${res.status}): ${detail.slice(0, 300) || res.statusText}`);
+  }
   return { id, path };
 }
 

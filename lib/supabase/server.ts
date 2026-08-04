@@ -2,12 +2,11 @@ import { createClient } from "@supabase/supabase-js";
 import { PDF_BUCKET } from "@/lib/constants";
 
 // Cliente de servidor con la service role key. Nunca se importa desde
-// código de cliente ("use client") — el resto del acceso a Supabase pasa
-// por las rutas de API de Next.js, ya que la app no tiene autenticación
-// individual por usuario (ver middleware/proxy de contraseña compartida).
-// Única excepción: la subida del PDF en sí, que va directa del navegador
-// a Supabase Storage con una signed upload URL de un solo uso generada
-// aquí (ver app/api/pdf/upload-url) — necesario porque las funciones de
+// código de cliente ("use client") — el navegador no habla con Supabase
+// directamente en ningún caso: la subida del PDF va a una signed upload
+// URL de un solo uso generada aquí con esta misma service role key (ver
+// app/api/pdf/upload-url) y luego el navegador hace un PUT normal a esa
+// URL, sin usar el SDK de Supabase — necesario porque las funciones de
 // Vercel tienen un límite de tamaño de payload (~4.5MB) que un PDF de
 // varias páginas puede superar fácilmente.
 export function supabaseAdmin() {
@@ -18,8 +17,9 @@ export function supabaseAdmin() {
       "Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en las variables de entorno"
     );
   }
-  // Ver la misma normalización en lib/supabase/browser.ts: una barra "/"
-  // final en la URL produce rutas de Storage con doble barra.
+  // Una barra "/" final en la URL (fácil de pegar sin querer en Vercel)
+  // produce rutas de Storage con doble barra, que Supabase rechaza con
+  // "Invalid path specified in request URL".
   const url = rawUrl.trim().replace(/\/+$/, "");
   return createClient(url, key.trim(), {
     auth: { autoRefreshToken: false, persistSession: false },
