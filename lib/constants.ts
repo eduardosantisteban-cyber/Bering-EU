@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.4.1",
+    desc: "Corrige la subida de PDF con espacios u otros caracteres en el nombre del archivo (fallaba con \"Invalid path specified in request URL\" en Supabase Storage)",
+  },
   {
     version: "1.4.0",
     desc: "Tests automáticos (Vitest) para la normalización de marcas, la reparación del JSON de la IA y el cálculo de precios/IVA del cotizador — los tres sitios donde ya hemos tenido bugs reales",

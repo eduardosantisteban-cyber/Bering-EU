@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { PDF_BUCKET, supabaseAdmin } from "@/lib/supabase/server";
-import { uid } from "@/lib/id";
+import { sanitizeStorageFilename, uid } from "@/lib/id";
 
 // Formato esperado de un path generado por este endpoint: "<id>/<filename>".
 const PATH_PATTERN = /^[a-z0-9]+\/[^/]+$/i;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const filename =
-    typeof body?.filename === "string" && body.filename.trim() ? body.filename.trim() : "documento.pdf";
+  const rawFilename = typeof body?.filename === "string" ? body.filename : "";
 
   const id = uid();
-  const path = `${id}/${filename}`;
+  // Supabase Storage rechaza espacios y otros caracteres en la ruta del
+  // objeto ("Invalid path specified in request URL"); el nombre original
+  // se conserva igualmente en la columna pdf_filename de la base de datos.
+  const path = `${id}/${sanitizeStorageFilename(rawFilename)}`;
 
   try {
     const db = supabaseAdmin();
