@@ -343,7 +343,7 @@ export default function HomePage() {
       {comparadorOpen && <ComparadorModal rows={rows} onClose={() => setComparadorOpen(false)} />}
 
       {cartOpen && (
-        <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} />
+        <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} onNotice={showNotice} />
       )}
 
       {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}

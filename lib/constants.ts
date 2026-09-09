@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "2.1.0";
+export const APP_VERSION = "2.2.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "2.2.0",
+    desc: "El Cotizador empareja automáticamente cada línea con su ficha técnica (por marca + modelo) y añade un enlace de descarga directa por línea, más un botón para descargar todas de golpe y adjuntarlas al enviar el presupuesto",
+  },
   {
     version: "2.1.0",
     desc: "Fichas técnicas: lista con vista previa de PDF integrada, y clasificación automática por IA (categoría/tipo/marca/modelo) al subir cada ficha, con botón para reclasificar",

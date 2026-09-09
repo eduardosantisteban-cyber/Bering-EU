@@ -104,6 +104,11 @@ cabecera:
 - La lista de la izquierda es buscable y filtrable por categoría/marca; al
   seleccionar una ficha se ve su vista previa en PDF a la derecha, sin
   necesidad de descargarla.
+- En el **Cotizador**, cada línea añadida se empareja automáticamente (por
+  marca + modelo, ver `lib/fichaMatch.ts`) con sus fichas técnicas si
+  existen, mostrando un enlace de descarga directa junto a la línea — y un
+  botón para descargar de golpe todas las fichas del presupuesto, para
+  adjuntarlas al enviárselo al cliente.
 
 ## Estructura del proyecto
 
