@@ -20,6 +20,7 @@ type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marc
 export default function HomePage() {
   const [db, setDb] = useState<Presupuesto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,8 +51,11 @@ export default function HomePage() {
     try {
       const data = await fetchPresupuestos();
       setDb(data);
+      setDbError(null);
     } catch (err) {
-      showNotice("error", (err as Error).message || "No se pudo cargar la base de datos");
+      const message = (err as Error).message || "No se pudo cargar la base de datos";
+      setDbError(message);
+      showNotice("error", message);
     } finally {
       setLoading(false);
     }
@@ -352,7 +356,16 @@ export default function HomePage() {
         <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} />
       )}
 
-      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
+      {changelogOpen && (
+        <ChangelogModal
+          onClose={() => setChangelogOpen(false)}
+          db={db}
+          linesCount={rows.length}
+          dbError={dbError}
+          onRefresh={refresh}
+          onNotice={showNotice}
+        />
+      )}
 
       {notice && <Notice type={notice.type} message={notice.message} />}
     </div>

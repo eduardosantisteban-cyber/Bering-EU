@@ -105,3 +105,19 @@ export async function getPdfUrl(id: string): Promise<string> {
 export async function logout(): Promise<void> {
   await fetch("/api/session", { method: "DELETE" });
 }
+
+export interface ImportBackupResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+/** Restaura un backup exportado desde esta misma app (o desde el artefacto antiguo de Claude.ai). */
+export async function importBackup(payload: unknown): Promise<ImportBackupResult> {
+  const res = await fetch("/api/presupuestos/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res);
+}

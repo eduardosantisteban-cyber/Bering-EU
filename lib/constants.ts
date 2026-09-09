@@ -11,8 +11,12 @@ export const PDF_BUCKET = "presupuestos-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "1.4.3";
+export const APP_VERSION = "1.5.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "1.5.0",
+    desc: "Panel de estado y backup (botón junto a la versión): número de presupuestos/líneas, estado de conexión, botón de actualizar, y exportar/importar backup en JSON",
+  },
   {
     version: "1.4.3",
     desc: "La subida de PDF ya no reconstruye la URL firmada de Supabase en el navegador: usa directamente la URL que genera el servidor, con un PUT simple (arregla el \"Invalid path specified in request URL\" persistente y simplifica el código)",
