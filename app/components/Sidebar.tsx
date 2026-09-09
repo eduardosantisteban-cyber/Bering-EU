@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { CATEGORIAS } from "@/lib/constants";
 import { importBackup } from "@/lib/apiClient";
 import { backupFilename, buildBackupPayload, extractBackupList } from "@/lib/backup";
@@ -46,6 +46,15 @@ export default function Sidebar({
   const [refreshing, setRefreshing] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasActiveFilters = !!(filterCategoria || filterTipo || filterMarca || filterYear);
+
+  function clearFilters() {
+    setFilterCategoria("");
+    setFilterTipo("");
+    setFilterMarca("");
+    setFilterYear("");
+  }
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -140,6 +149,15 @@ export default function Sidebar({
           </select>
         </label>
       </div>
+
+      {hasActiveFilters && (
+        <button
+          onClick={clearFilters}
+          className="mt-2 flex items-center gap-1 text-xs text-[#606060] hover:text-[#e83038]"
+        >
+          <X size={12} /> Limpiar filtros
+        </button>
+      )}
 
       <div className="my-4 border-t border-[#e2e0dc]" />
 

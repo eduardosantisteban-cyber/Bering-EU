@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "2.0.0";
+export const APP_VERSION = "2.0.1";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "2.0.1",
+    desc: "Botón para limpiar filtros directamente en la barra lateral",
+  },
   {
     version: "2.0.0",
     desc: "Nuevo layout con barra lateral (filtros + estado + backup) y cabecera rediseñada; catálogo de fichas técnicas independiente de los presupuestos (subir, clasificar por categoría/tipo/marca/modelo, consultar y descargar)",
