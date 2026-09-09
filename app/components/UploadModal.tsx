@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, Upload, X } from "lucide-react";
 import { CATEGORIAS } from "@/lib/constants";
 import type { ExtractedPresupuesto, ExtractedItem } from "@/lib/types";
 import { createPresupuesto, discardUploadedPdf, extractPdf, requestUploadUrl } from "@/lib/apiClient";
+import { putFileToSignedUrl } from "@/lib/uploadDirect";
 import { Button, Field, Overlay, ModalHeader, inputStyleSm } from "./ui";
 
 type Status = "pendiente" | "subiendo" | "procesando" | "revision" | "guardando" | "error";
@@ -44,28 +45,7 @@ function emptyItem(grupo: number): ExtractedItem {
 
 async function uploadFileDirect(file: File): Promise<{ id: string; path: string }> {
   const { id, path, signedUrl } = await requestUploadUrl(file.name);
-
-  // PUT directo a la URL que ya firmó y validó Supabase en el servidor,
-  // sin que el navegador tenga que reconstruirla a partir de la ruta y el
-  // token (eso es lo que daba "Invalid path specified in request URL" con
-  // el cliente de Supabase, sin llegar a identificar la causa exacta).
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!anonKey) {
-    throw new Error("Falta NEXT_PUBLIC_SUPABASE_ANON_KEY en las variables de entorno");
-  }
-  const res = await fetch(signedUrl, {
-    method: "PUT",
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      "Content-Type": "application/pdf",
-    },
-    body: file,
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`No se pudo subir el PDF (HTTP ${res.status}): ${detail.slice(0, 300) || res.statusText}`);
-  }
+  await putFileToSignedUrl(signedUrl, file);
   return { id, path };
 }
 

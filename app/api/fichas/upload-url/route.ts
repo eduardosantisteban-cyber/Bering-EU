@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { PDF_BUCKET, createUploadUrl, supabaseAdmin } from "@/lib/supabase/server";
+import { FICHAS_BUCKET, createUploadUrl, supabaseAdmin } from "@/lib/supabase/server";
 
-// Formato esperado de un path generado por este endpoint: "<id>/<filename>".
 const PATH_PATTERN = /^[a-z0-9]+\/[^/]+$/i;
 
 export async function POST(request: Request) {
@@ -9,19 +8,18 @@ export async function POST(request: Request) {
   const rawFilename = typeof body?.filename === "string" ? body.filename : "";
 
   try {
-    const result = await createUploadUrl(PDF_BUCKET, rawFilename);
+    const result = await createUploadUrl(FICHAS_BUCKET, rawFilename);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(
-      { error: (err as Error).message || "No se pudo preparar la subida del PDF" },
+      { error: (err as Error).message || "No se pudo preparar la subida de la ficha técnica" },
       { status: 500 }
     );
   }
 }
 
-// Borra un PDF subido que nunca llegó a guardarse como presupuesto
-// (el usuario descartó el archivo tras subirlo, o falló la extracción y
-// no reintentó). Best-effort: si falla, no bloquea nada en el cliente.
+// Borra una ficha técnica subida que nunca llegó a guardarse como
+// registro (el usuario descartó el archivo tras subirlo). Best-effort.
 export async function DELETE(request: Request) {
   const body = await request.json().catch(() => null);
   const path = typeof body?.path === "string" ? body.path : null;
@@ -31,11 +29,11 @@ export async function DELETE(request: Request) {
 
   try {
     const db = supabaseAdmin();
-    await db.storage.from(PDF_BUCKET).remove([path]);
+    await db.storage.from(FICHAS_BUCKET).remove([path]);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(
-      { error: (err as Error).message || "No se pudo borrar el PDF" },
+      { error: (err as Error).message || "No se pudo borrar la ficha técnica" },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "./supabase/server";
 import { itemsDedupeKey } from "./backup";
-import type { Presupuesto, PresupuestoItem } from "./types";
+import type { FichaTecnica, Presupuesto, PresupuestoItem } from "./types";
 
 type PresupuestoRow = Omit<Presupuesto, "items">;
 
@@ -186,4 +186,61 @@ export async function importPresupuestos(
   }
 
   return { imported, skipped, errors };
+}
+
+/* -------- fichas técnicas -------- */
+
+export async function listFichas(): Promise<FichaTecnica[]> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("fichas_tecnicas")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as FichaTecnica[];
+}
+
+export async function getFicha(id: string): Promise<FichaTecnica | null> {
+  const db = supabaseAdmin();
+  const { data, error } = await db.from("fichas_tecnicas").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return (data as FichaTecnica) ?? null;
+}
+
+export async function createFicha(
+  ficha: Omit<FichaTecnica, "created_at">
+): Promise<FichaTecnica> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("fichas_tecnicas")
+    .insert({
+      id: ficha.id,
+      categoria: ficha.categoria || "",
+      tipo_producto: ficha.tipo_producto ?? null,
+      marca: ficha.marca ?? null,
+      modelo: ficha.modelo ?? null,
+      nombre_archivo: ficha.nombre_archivo,
+      storage_path: ficha.storage_path,
+      notas: ficha.notas ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as FichaTecnica;
+}
+
+export async function updateFicha(
+  id: string,
+  patch: Partial<Pick<FichaTecnica, "categoria" | "tipo_producto" | "marca" | "modelo" | "notas">>
+): Promise<FichaTecnica> {
+  const db = supabaseAdmin();
+  const { data, error } = await db.from("fichas_tecnicas").update(patch).eq("id", id).select().single();
+  if (error) throw error;
+  return data as FichaTecnica;
+}
+
+export async function deleteFicha(id: string): Promise<void> {
+  const db = supabaseAdmin();
+  const { error } = await db.from("fichas_tecnicas").delete().eq("id", id);
+  if (error) throw error;
 }

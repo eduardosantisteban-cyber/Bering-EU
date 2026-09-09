@@ -68,7 +68,7 @@ export const inputStyle =
 export const inputStyleSm =
   "rounded-md border border-[#e2e0dc] px-2 py-1 text-xs outline-none focus:border-[#e83038] bg-white";
 
-type BtnVariant = "primary" | "ghost" | "ghost-light" | "danger";
+type BtnVariant = "primary" | "ghost" | "ghost-light" | "ghost-dark" | "danger";
 
 export function Button({
   variant = "ghost",
@@ -82,6 +82,9 @@ export function Button({
     ghost: "bg-[#282828] text-white hover:bg-[#3a3a3a]",
     "ghost-light":
       "bg-white text-[#282828] border border-[#e2e0dc] hover:bg-[#f5f4f2]",
+    // Botones de navegación sobre la cabecera negra (Fichas técnicas,
+    // Comparador, Cotizador): bordeados, sin bloque blanco sólido.
+    "ghost-dark": "bg-white/5 text-white border border-white/20 hover:bg-white/10",
     danger: "bg-white text-[#e83038] border border-[#e83038]/40 hover:bg-[#e83038]/5",
   };
   return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;

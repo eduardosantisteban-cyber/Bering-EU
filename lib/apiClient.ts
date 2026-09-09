@@ -1,4 +1,4 @@
-import type { ExtractedPresupuesto, Presupuesto, PresupuestoItem } from "./types";
+import type { ExtractedPresupuesto, FichaTecnica, Presupuesto, PresupuestoItem } from "./types";
 
 async function jsonOrThrow(res: Response) {
   const data = await res.json().catch(() => null);
@@ -28,9 +28,8 @@ export interface UploadUrlResult {
   signedUrl: string;
 }
 
-/** Pide una URL de subida firmada de un solo uso (el PDF se sube directo a Supabase Storage, sin pasar por el body de la función). */
-export async function requestUploadUrl(filename: string): Promise<UploadUrlResult> {
-  const res = await fetch("/api/pdf/upload-url", {
+async function requestUploadUrlAt(endpoint: string, filename: string): Promise<UploadUrlResult> {
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename }),
@@ -38,10 +37,9 @@ export async function requestUploadUrl(filename: string): Promise<UploadUrlResul
   return jsonOrThrow(res);
 }
 
-/** Borra un PDF subido que nunca se llegó a guardar como presupuesto (best-effort). */
-export async function discardUploadedPdf(path: string): Promise<void> {
+async function discardUploadAt(endpoint: string, path: string): Promise<void> {
   try {
-    await fetch("/api/pdf/upload-url", {
+    await fetch(endpoint, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
@@ -49,6 +47,25 @@ export async function discardUploadedPdf(path: string): Promise<void> {
   } catch {
     // best-effort: si falla, se queda un archivo huérfano en Storage, no es crítico.
   }
+}
+
+/** Pide una URL de subida firmada de un solo uso (el PDF se sube directo a Supabase Storage, sin pasar por el body de la función). */
+export async function requestUploadUrl(filename: string): Promise<UploadUrlResult> {
+  return requestUploadUrlAt("/api/pdf/upload-url", filename);
+}
+
+/** Borra un PDF subido que nunca se llegó a guardar como presupuesto (best-effort). */
+export async function discardUploadedPdf(path: string): Promise<void> {
+  return discardUploadAt("/api/pdf/upload-url", path);
+}
+
+/** Igual que requestUploadUrl, pero para el bucket de fichas técnicas. */
+export async function requestFichaUploadUrl(filename: string): Promise<UploadUrlResult> {
+  return requestUploadUrlAt("/api/fichas/upload-url", filename);
+}
+
+export async function discardUploadedFicha(path: string): Promise<void> {
+  return discardUploadAt("/api/fichas/upload-url", path);
 }
 
 export interface CreatePresupuestoInput {
@@ -120,4 +137,58 @@ export async function importBackup(payload: unknown): Promise<ImportBackupResult
     body: JSON.stringify(payload),
   });
   return jsonOrThrow(res);
+}
+
+/* -------- fichas técnicas -------- */
+
+export async function fetchFichas(): Promise<FichaTecnica[]> {
+  const res = await fetch("/api/fichas", { cache: "no-store" });
+  return jsonOrThrow(res);
+}
+
+export interface CreateFichaInput {
+  id: string;
+  categoria: string;
+  tipo_producto: string | null;
+  marca: string | null;
+  modelo: string | null;
+  nombre_archivo: string;
+  storage_path: string;
+}
+
+export async function createFicha(input: CreateFichaInput): Promise<FichaTecnica> {
+  const res = await fetch("/api/fichas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return jsonOrThrow(res);
+}
+
+export interface UpdateFichaInput {
+  categoria?: string | null;
+  tipo_producto?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  notas?: string | null;
+}
+
+export async function updateFicha(id: string, input: UpdateFichaInput): Promise<FichaTecnica> {
+  const res = await fetch(`/api/fichas/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function deleteFicha(id: string): Promise<void> {
+  const res = await fetch(`/api/fichas/${id}`, { method: "DELETE" });
+  await jsonOrThrow(res);
+}
+
+export async function getFichaDownloadUrl(id: string): Promise<string> {
+  const res = await fetch(`/api/fichas/${id}/download`);
+  const data = await jsonOrThrow(res);
+  return data.url;
 }

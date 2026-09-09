@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { PDF_BUCKET } from "@/lib/constants";
+import { PDF_BUCKET, FICHAS_BUCKET } from "@/lib/constants";
+import { sanitizeStorageFilename, uid } from "@/lib/id";
 
 // Cliente de servidor con la service role key. Nunca se importa desde
 // código de cliente ("use client") — el navegador no habla con Supabase
@@ -26,7 +27,24 @@ export function supabaseAdmin() {
   });
 }
 
-export { PDF_BUCKET };
+export { PDF_BUCKET, FICHAS_BUCKET };
+
+/**
+ * Genera una signed upload URL de un solo uso para un bucket dado —
+ * compartido por /api/pdf/upload-url (PDFs de presupuesto) y
+ * /api/fichas/upload-url (PDFs de fichas técnicas), único cambio entre
+ * ambos es el bucket.
+ */
+export async function createUploadUrl(bucket: string, filename: string) {
+  const id = uid();
+  const path = `${id}/${sanitizeStorageFilename(filename)}`;
+  const db = supabaseAdmin();
+  const { data, error } = await db.storage.from(bucket).createSignedUploadUrl(path);
+  if (error || !data) {
+    throw error || new Error("Respuesta vacía de Supabase Storage");
+  }
+  return { id, path: data.path, signedUrl: data.signedUrl };
+}
 
 /** Descarga un PDF ya subido a Storage y lo devuelve en base64, para mandarlo a la API de Anthropic. */
 export async function downloadPdfAsBase64(path: string): Promise<string> {

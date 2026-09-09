@@ -42,11 +42,15 @@ una subida que el backend ya autorizó con la service role key.
 
 ### 2. Base de datos
 
-Crea un proyecto en [supabase.com](https://supabase.com) y ejecuta la
-migración `supabase/migrations/0001_init.sql` desde el SQL Editor del panel
-(o con la CLI de Supabase: `supabase db push`). Crea las tablas
-`presupuestos` / `presupuesto_items` y el bucket de Storage
-`presupuestos-pdfs` para los PDF originales.
+Crea un proyecto en [supabase.com](https://supabase.com) y ejecuta, en
+orden, las migraciones de `supabase/migrations/` desde el SQL Editor del
+panel (o con la CLI de Supabase: `supabase db push`):
+
+- `0001_init.sql` — tablas `presupuestos` / `presupuesto_items` y el bucket
+  de Storage `presupuestos-pdfs` para los PDF originales.
+- `0002_fichas_tecnicas.sql` — tabla `fichas_tecnicas` y el bucket
+  `fichas-tecnicas-pdfs`, para el catálogo de especificaciones de producto
+  (ver más abajo).
 
 ### 3. Migrar los datos existentes (opcional)
 
@@ -84,26 +88,40 @@ npm run test
    Variables.
 3. Despliega — no requiere configuración adicional.
 
+## Fichas técnicas
+
+Catálogo independiente de PDF de especificaciones de producto (no ligado a
+ningún presupuesto concreto), pensado para que el equipo comercial pueda
+consultarlos y descargarlos. Se abre desde el botón "Fichas técnicas" de la
+cabecera: se pueden subir varios PDF a la vez (van directos a Storage, igual
+que los presupuestos) y clasificar por categoría/tipo/marca/modelo
+editando directamente en la tabla.
+
 ## Estructura del proyecto
 
 ```
 app/
   api/
-    session/          # login/logout con la contraseña compartida
-    pdf/upload-url/    # genera la URL firmada para subir el PDF directo a Storage
-    extract/           # descarga el PDF ya subido y lo manda a la IA
-    presupuestos/       # CRUD de presupuestos
-    pdf/[id]/           # URL firmada para ver el PDF guardado en Storage
-  components/            # UI: subida/revisión, detalle, comparador, cotizador
-  login/, page.tsx        # pantalla de login y dashboard principal
+    session/            # login/logout con la contraseña compartida
+    pdf/upload-url/      # genera la URL firmada para subir un PDF de presupuesto
+    extract/             # descarga el PDF ya subido y lo manda a la IA
+    presupuestos/         # CRUD de presupuestos (+ /import para restaurar backups)
+    pdf/[id]/             # URL firmada para ver el PDF de un presupuesto
+    fichas/               # CRUD de fichas técnicas
+    fichas/upload-url/    # URL firmada para subir un PDF de ficha técnica
+    fichas/[id]/download/ # URL firmada para ver/descargar una ficha técnica
+  components/              # UI: subida/revisión, detalle, sidebar, fichas técnicas, comparador, cotizador
+  login/, page.tsx          # pantalla de login y dashboard principal
 lib/
-  anthropic.ts           # llamada a la API de Anthropic + prompt de extracción
-  db.ts                  # acceso a Supabase (listar/crear/actualizar/borrar)
-  auth.ts                # verificación de contraseña y cookie de sesión
-  supabase/server.ts     # cliente de Supabase del servidor (service role)
-supabase/migrations/      # esquema SQL
-scripts/seed.mjs          # importación del backup JSON antiguo
-proxy.ts               # protege todas las rutas salvo /login (Next.js 16)
+  anthropic.ts             # llamada a la API de Anthropic + prompt de extracción
+  db.ts                    # acceso a Supabase (listar/crear/actualizar/borrar)
+  auth.ts                  # verificación de contraseña y cookie de sesión
+  backup.ts                # payload/dedup del export-import de backup
+  uploadDirect.ts           # PUT del navegador a una signed upload URL
+  supabase/server.ts       # cliente de Supabase del servidor (service role)
+supabase/migrations/        # esquema SQL
+scripts/seed.mjs            # importación del backup JSON antiguo
+proxy.ts                 # protege todas las rutas salvo /login (Next.js 16)
 ```
 
 ## Coste de la IA

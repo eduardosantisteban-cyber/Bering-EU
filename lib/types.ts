@@ -52,3 +52,15 @@ export interface ExtractedPresupuesto {
   fecha_presupuesto: string | null;
   items: ExtractedItem[];
 }
+
+export interface FichaTecnica {
+  id: string;
+  categoria: Categoria | string;
+  tipo_producto: string | null;
+  marca: string | null;
+  modelo: string | null;
+  nombre_archivo: string;
+  storage_path: string;
+  notas: string | null;
+  created_at: string;
+}

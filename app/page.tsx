@@ -2,18 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowUpDown, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upload, X } from "lucide-react";
+import { ArrowUpDown, BookOpen, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upload, X } from "lucide-react";
 import type { Presupuesto } from "@/lib/types";
-import { APP_VERSION, CATEGORIAS } from "@/lib/constants";
+import { APP_VERSION } from "@/lib/constants";
 import { fetchPresupuestos, logout } from "@/lib/apiClient";
 import { fmtMoney, normalizeMarca, normalizeStr } from "@/lib/format";
 import { Button, Notice, inputStyleSm } from "./components/ui";
 import type { FlatRow } from "./components/types";
+import Sidebar from "./components/Sidebar";
 import UploadModal from "./components/UploadModal";
 import DetailModal from "./components/DetailModal";
 import ComparadorModal from "./components/ComparadorModal";
 import CotizadorPanel, { type CartLine } from "./components/CotizadorPanel";
 import ChangelogModal from "./components/ChangelogModal";
+import FichasTecnicasModal from "./components/FichasTecnicasModal";
 
 type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marca";
 
@@ -39,6 +41,7 @@ export default function HomePage() {
   const [comparadorOpen, setComparadorOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [fichasOpen, setFichasOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
 
   const showNotice = useCallback((type: "error" | "success", message: string) => {
@@ -166,28 +169,26 @@ export default function HomePage() {
       <header className="sticky top-0 z-30 flex items-center justify-between bg-black px-5 py-3">
         <div className="flex items-center gap-3">
           <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
-          <div>
-            <h1 className="text-lg font-semibold text-white">
-              Presupuestos{" "}
-              <button
-                onClick={() => setChangelogOpen(true)}
-                className="align-middle text-xs font-normal text-white/60 hover:text-[#e83038] hover:underline"
-              >
-                v{APP_VERSION}
-              </button>
-            </h1>
-            <p className="text-xs text-white/60">{db.length} presupuestos · {rows.length} líneas</p>
-          </div>
+          <button
+            onClick={() => setChangelogOpen(true)}
+            className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/80 hover:bg-white/20 hover:text-white"
+          >
+            v{APP_VERSION}
+          </button>
+          <p className="hidden text-xs text-white/60 sm:block">Base de datos de presupuestos de proveedores</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost-light" onClick={() => setComparadorOpen(true)}>
+          <Button variant="ghost-dark" onClick={() => setFichasOpen(true)}>
+            <BookOpen size={15} /> Fichas técnicas
+          </Button>
+          <Button variant="ghost-dark" onClick={() => setComparadorOpen(true)}>
             <Scale size={15} /> Comparador
           </Button>
-          <Button variant="ghost-light" onClick={() => setCartOpen(true)}>
+          <Button variant="ghost-dark" onClick={() => setCartOpen(true)}>
             <ShoppingCart size={15} /> Cotizador {cart.length > 0 && `(${cart.length})`}
           </Button>
           <Button variant="primary" onClick={() => setUploadOpen(true)}>
-            <Upload size={15} /> Subir PDF
+            <Upload size={15} /> Subir presupuesto
           </Button>
           <button onClick={handleLogout} className="rounded p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Salir">
             <LogOut size={16} />
@@ -195,66 +196,54 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="flex-1 p-5">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#606060]" />
-            <input
-              className={inputStyleSm + " w-full pl-8"}
-              placeholder="Buscar por tipo, marca, modelo, medidas, proveedor…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <select className={inputStyleSm} value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)}>
-            <option value="">Todas las categorías</option>
-            {CATEGORIAS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select className={inputStyleSm} value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}>
-            <option value="">Todos los tipos</option>
-            {tiposDisponibles.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <select className={inputStyleSm} value={filterMarca} onChange={(e) => setFilterMarca(e.target.value)}>
-            <option value="">Todas las marcas</option>
-            {marcasDisponibles.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select className={inputStyleSm} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
-            <option value="">Todos los años</option>
-            {aniosDisponibles.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          {(filterCategoria || filterTipo || filterMarca || filterYear || search) && (
-            <button
-              onClick={() => {
-                setFilterCategoria("");
-                setFilterTipo("");
-                setFilterMarca("");
-                setFilterYear("");
-                setSearch("");
-              }}
-              className="flex items-center gap-1 text-xs text-[#606060] hover:text-[#e83038]"
-            >
-              <X size={12} /> Limpiar filtros
-            </button>
-          )}
-        </div>
+      <div className="flex flex-1">
+        <Sidebar
+          db={db}
+          linesCount={rows.length}
+          dbError={dbError}
+          onRefresh={refresh}
+          onNotice={showNotice}
+          filterCategoria={filterCategoria}
+          setFilterCategoria={setFilterCategoria}
+          filterTipo={filterTipo}
+          setFilterTipo={setFilterTipo}
+          tiposDisponibles={tiposDisponibles}
+          filterMarca={filterMarca}
+          setFilterMarca={setFilterMarca}
+          marcasDisponibles={marcasDisponibles}
+          filterYear={filterYear}
+          setFilterYear={setFilterYear}
+          aniosDisponibles={aniosDisponibles}
+        />
 
-        {loading ? (
+        <main className="flex-1 p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#606060]" />
+              <input
+                className={inputStyleSm + " w-full pl-8"}
+                placeholder="Buscar por tipo, marca, modelo, medidas, proveedor…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {(filterCategoria || filterTipo || filterMarca || filterYear || search) && (
+              <button
+                onClick={() => {
+                  setFilterCategoria("");
+                  setFilterTipo("");
+                  setFilterMarca("");
+                  setFilterYear("");
+                  setSearch("");
+                }}
+                className="flex items-center gap-1 text-xs text-[#606060] hover:text-[#e83038]"
+              >
+                <X size={12} /> Limpiar filtros
+              </button>
+            )}
+          </div>
+
+          {loading ? (
           <div className="flex items-center justify-center gap-2 py-20 text-[#606060]">
             <Loader2 size={18} className="animate-spin" /> Cargando…
           </div>
@@ -320,7 +309,8 @@ export default function HomePage() {
             </table>
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       {uploadOpen && (
         <UploadModal
@@ -356,16 +346,9 @@ export default function HomePage() {
         <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} />
       )}
 
-      {changelogOpen && (
-        <ChangelogModal
-          onClose={() => setChangelogOpen(false)}
-          db={db}
-          linesCount={rows.length}
-          dbError={dbError}
-          onRefresh={refresh}
-          onNotice={showNotice}
-        />
-      )}
+      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
+
+      {fichasOpen && <FichasTecnicasModal onClose={() => setFichasOpen(false)} onNotice={showNotice} />}
 
       {notice && <Notice type={notice.type} message={notice.message} />}
     </div>
