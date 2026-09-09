@@ -209,3 +209,24 @@ export async function extractFichaMetadata(storagePath: string): Promise<FichaMe
   });
   return jsonOrThrow(res);
 }
+
+/* -------- Holded -------- */
+
+export interface HoldedEstimateItem {
+  name: string;
+  units: number;
+  price: number;
+}
+
+export async function sendToHolded(input: {
+  clienteName: string;
+  clienteEmail?: string;
+  items: HoldedEstimateItem[];
+}): Promise<{ ok: true; id: string }> {
+  const res = await fetch("/api/holded/send-estimate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return jsonOrThrow(res);
+}

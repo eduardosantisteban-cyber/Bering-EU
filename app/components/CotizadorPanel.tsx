@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { Copy, FileSpreadsheet, FileText, Trash2, X } from "lucide-react";
+import { Copy, FileSpreadsheet, FileText, Loader2, Send, Trash2, X } from "lucide-react";
 import type { FlatRow } from "./types";
 import { fmtMoney } from "@/lib/format";
 import { priceLine, computeTotals } from "@/lib/pricing";
 import { matchesFicha } from "@/lib/fichaMatch";
-import { fetchFichas, getFichaDownloadUrl } from "@/lib/apiClient";
+import { fetchFichas, getFichaDownloadUrl, sendToHolded } from "@/lib/apiClient";
 import type { FichaTecnica } from "@/lib/types";
 import { Button, inputStyleSm } from "./ui";
 
@@ -44,6 +44,9 @@ export default function CotizadorPanel({
   const [markupGlobal, setMarkupGlobal] = useState(0);
   const [exportedText, setExportedText] = useState<string | null>(null);
   const [fichas, setFichas] = useState<FichaTecnica[]>([]);
+  const [clienteName, setClienteName] = useState("");
+  const [clienteEmail, setClienteEmail] = useState("");
+  const [sendingToHolded, setSendingToHolded] = useState(false);
 
   useEffect(() => {
     // Mejor esfuerzo: si falla, el cotizador sigue funcionando igual, solo
@@ -167,6 +170,30 @@ export default function CotizadorPanel({
     XLSX.writeFile(wb, `presupuesto_bering_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
+  async function handleSendToHolded() {
+    if (!clienteName.trim()) {
+      onNotice?.("error", "Escribe el nombre del cliente antes de enviar a Holded.");
+      return;
+    }
+    setSendingToHolded(true);
+    try {
+      await sendToHolded({
+        clienteName: clienteName.trim(),
+        clienteEmail: clienteEmail.trim() || undefined,
+        items: cartRows.map((r) => ({
+          name: `${r.tipo_producto || ""} ${r.modelo || ""}${r.medidas ? ` (${r.medidas})` : ""}`.replace(/\s+/g, " ").trim(),
+          units: r.cantidad,
+          price: r.precioVenta,
+        })),
+      });
+      onNotice?.("success", `Presupuesto enviado a Holded como "estimate" de ${clienteName.trim()}.`);
+    } catch (err) {
+      onNotice?.("error", "No se pudo enviar a Holded: " + (err as Error).message);
+    } finally {
+      setSendingToHolded(false);
+    }
+  }
+
   return (
     <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-[#e2e0dc] bg-white shadow-xl">
       <div className="flex items-center justify-between border-b border-[#e2e0dc] px-4 py-3">
@@ -273,7 +300,7 @@ export default function CotizadorPanel({
               <span>{fmtMoney(total)}</span>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="mb-3 flex gap-2">
             <Button variant="ghost-light" className="flex-1 justify-center" onClick={copyExportText}>
               <Copy size={14} /> Copiar texto
             </Button>
@@ -284,10 +311,37 @@ export default function CotizadorPanel({
           {exportedText && (
             <textarea
               readOnly
-              className="mt-3 h-32 w-full rounded-md border border-[#e2e0dc] p-2 text-xs"
+              className="mb-3 h-32 w-full rounded-md border border-[#e2e0dc] p-2 text-xs"
               value={exportedText}
             />
           )}
+
+          <div className="border-t border-[#e2e0dc] pt-3">
+            <p className="mb-2 text-xs font-semibold tracking-wide text-[#606060]">ENVIAR A HOLDED</p>
+            <div className="mb-2 flex gap-2">
+              <input
+                className={inputStyleSm + " flex-1"}
+                placeholder="Nombre del cliente"
+                value={clienteName}
+                onChange={(e) => setClienteName(e.target.value)}
+              />
+              <input
+                className={inputStyleSm + " flex-1"}
+                placeholder="Email (opcional)"
+                value={clienteEmail}
+                onChange={(e) => setClienteEmail(e.target.value)}
+              />
+            </div>
+            <Button
+              variant="ghost-light"
+              className="w-full justify-center"
+              onClick={handleSendToHolded}
+              disabled={sendingToHolded || !clienteName.trim()}
+            >
+              {sendingToHolded ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              Crear presupuesto en Holded
+            </Button>
+          </div>
         </div>
       )}
     </div>

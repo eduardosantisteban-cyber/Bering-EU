@@ -31,6 +31,7 @@ Copia `.env.example` a `.env.local` y rellena:
 | `SUPABASE_SERVICE_ROLE_KEY` | Panel de Supabase → Settings → API → `service_role` (secreta, nunca la publiques) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Panel de Supabase → Settings → API → `anon` `public` (segura de exponer) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys |
+| `HOLDED_API_KEY` | Panel de Holded → Ajustes → API. Opcional — sin ella, todo funciona igual salvo "Crear presupuesto en Holded" |
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` se usa solo para que el navegador suba el
 PDF directo a Supabase Storage con un PUT normal a una URL de subida firmada
@@ -110,6 +111,26 @@ cabecera:
   botón para descargar de golpe todas las fichas del presupuesto, para
   adjuntarlas al enviárselo al cliente.
 
+## Integración con Holded (CRM)
+
+Envío unidireccional (esta app → Holded, nunca al revés): desde el
+Cotizador, con el nombre del cliente y opcionalmente su email, el botón
+"Crear presupuesto en Holded" busca o crea el contacto en Holded y crea un
+documento tipo `estimate` con las líneas del carrito (nombre, cantidad,
+precio de venta con markup ya aplicado).
+
+**Importante**: `lib/holded.ts` se escribió a partir de fragmentos de la
+API de Holded encontrados por buscadores, no de la documentación oficial
+(developers.holded.com no era accesible desde el entorno donde se
+desarrolló, así que tampoco se pudo probar contra una cuenta real). Antes
+de confiar en el botón, pruébalo con un presupuesto de prueba y revisa que
+el documento se cree bien en Holded — en particular, no quedó claro cómo
+se referencia el IVA (probablemente aplica el impuesto por defecto de tu
+cuenta; puede que haya que revisarlo/ajustarlo dentro de Holded antes de
+mandarlo al cliente). Si algo falla, el mensaje de error del botón
+debería incluir la respuesta de Holded — con eso se puede ajustar
+`lib/holded.ts` sin tocar el resto de la app.
+
 ## Estructura del proyecto
 
 ```
@@ -124,6 +145,7 @@ app/
     fichas/upload-url/    # URL firmada para subir un PDF de ficha técnica
     fichas/extract/       # clasifica una ficha con IA (categoría/tipo/marca/modelo)
     fichas/[id]/download/ # URL firmada para ver/descargar una ficha técnica
+    holded/send-estimate/ # crea el contacto y el presupuesto en Holded
   components/              # UI: subida/revisión, detalle, sidebar, fichas técnicas, comparador, cotizador
   login/, page.tsx          # pantalla de login y dashboard principal
 lib/
@@ -131,6 +153,8 @@ lib/
   db.ts                    # acceso a Supabase (listar/crear/actualizar/borrar)
   auth.ts                  # verificación de contraseña y cookie de sesión
   backup.ts                # payload/dedup del export-import de backup
+  fichaMatch.ts             # empareja líneas del cotizador con fichas técnicas
+  holded.ts                 # cliente mínimo de la API de Holded (ver aviso arriba)
   uploadDirect.ts           # PUT del navegador a una signed upload URL
   supabase/server.ts       # cliente de Supabase del servidor (service role)
 supabase/migrations/        # esquema SQL
