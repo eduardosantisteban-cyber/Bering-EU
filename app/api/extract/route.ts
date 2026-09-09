@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { extractFromPdfWithRetry } from "@/lib/anthropic";
-import { downloadPdfAsBase64 } from "@/lib/supabase/server";
+import { PDF_BUCKET, downloadAsBase64 } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const base64 = await downloadPdfAsBase64(storagePath);
+    const base64 = await downloadAsBase64(PDF_BUCKET, storagePath);
     const extracted = await extractFromPdfWithRetry(base64);
     return NextResponse.json(extracted);
   } catch (err) {

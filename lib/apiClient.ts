@@ -192,3 +192,20 @@ export async function getFichaDownloadUrl(id: string): Promise<string> {
   const data = await jsonOrThrow(res);
   return data.url;
 }
+
+export interface FichaMetadata {
+  categoria: string;
+  tipo_producto: string | null;
+  marca: string | null;
+  modelo: string | null;
+}
+
+/** Pide a la IA que rellene categoría/tipo/marca/modelo a partir del PDF ya subido. */
+export async function extractFichaMetadata(storagePath: string): Promise<FichaMetadata> {
+  const res = await fetch("/api/fichas/extract", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storagePath }),
+  });
+  return jsonOrThrow(res);
+}

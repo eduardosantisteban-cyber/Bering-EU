@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "2.0.1";
+export const APP_VERSION = "2.1.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "2.1.0",
+    desc: "Fichas técnicas: lista con vista previa de PDF integrada, y clasificación automática por IA (categoría/tipo/marca/modelo) al subir cada ficha, con botón para reclasificar",
+  },
   {
     version: "2.0.1",
     desc: "Botón para limpiar filtros directamente en la barra lateral",
@@ -137,4 +141,28 @@ Reglas importantes:
 - NO generes ningún item a partir de páginas de condiciones generales, confirmación de pedido, o fichas técnicas/descripción completa de productos, aunque mencionen modelos, medidas o características — si una página no tiene una fila con cantidad y precio asociados, ignórala por completo.
 - Si un dato no aparece, usa null. No inventes datos.
 - MUY IMPORTANTE — validez del JSON: dentro de cualquier valor de texto (medidas, modelo, notas, etc.) NUNCA uses el símbolo de comilla doble (") suelto, ni siquiera para indicar pulgadas. Si el documento usa pulgadas (ej. 36" x 48"), escríbelo como "36 in x 48 in" o "36pulg x 48pulg", nunca con el símbolo " literal. Si necesitas incluir una comilla doble dentro de un texto por cualquier motivo, escápala como \\" . Antes de terminar tu respuesta, revisa mentalmente que cada string abra y cierre correctamente y que no haya comillas sueltas sin escapar.
+- Devuelve solo el JSON, nada más: ni texto antes, ni después, ni bloques de markdown.`;
+
+export const FICHA_EXTRACTION_PROMPT = `Eres un asistente que clasifica fichas técnicas (hojas de especificaciones) de productos de puertas industriales y equipos de muelle de carga, para catalogarlas en una base de datos.
+
+Analiza el PDF adjunto y devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones ni comentarios, con esta estructura exacta:
+
+{
+  "categoria": "DEBE ser EXACTAMENTE uno de estos valores textuales, sin variaciones: \\"Muelle de carga\\", \\"Minidock\\", \\"Puerta seccional\\", \\"Puerta rápida\\", \\"Puerta cortafuegos\\", \\"Accesorio muelle de carga\\", \\"Accesorio puerta seccional\\", \\"Accesorio puerta rápida\\", \\"Accesorio puerta cortafuegos\\", \\"Transporte\\", \\"Instalación\\"",
+  "tipo_producto": "ej. puerta rápida, puerta seccional, puerta cortafuegos, dock leveler, minidock, dock shelter, accesorio, u otro, o null si no se puede determinar",
+  "marca": "fabricante o marca del producto tal como aparece en el documento (normalmente en el logo o cabecera de la ficha), o null si no aparece",
+  "modelo": "modelo o referencia comercial del producto, o null si no aparece"
+}
+
+Reglas para asignar "categoria" (aplícalas siempre, no la dejes vacía si puedes inferirla):
+- Si el producto es un dock leveler o plataforma niveladora de muelle → "Muelle de carga".
+- Si es un minidock → "Minidock".
+- Si es una puerta seccional → "Puerta seccional".
+- Si es una puerta rápida (enrollable, de PVC, de alta velocidad) → "Puerta rápida".
+- Si es una puerta cortafuegos (EI, resistente al fuego) → "Puerta cortafuegos".
+- Si es un accesorio, componente o repuesto (topes de goma, carriles, tornillería, mandos, fotocélulas, etc.), usa la categoría de accesorio correspondiente al tipo de producto principal al que pertenece: "Accesorio muelle de carga", "Accesorio puerta seccional", "Accesorio puerta rápida" o "Accesorio puerta cortafuegos".
+- Si tras aplicar estas reglas sigues sin poder determinar la categoría con certeza, deja "categoria" como cadena vacía "" en vez de inventar una.
+
+Reglas importantes:
+- No inventes datos: si un campo no aparece claramente en el documento, usa null (o "" para categoria).
 - Devuelve solo el JSON, nada más: ni texto antes, ni después, ni bloques de markdown.`;

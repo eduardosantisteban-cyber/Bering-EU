@@ -93,9 +93,17 @@ npm run test
 Catálogo independiente de PDF de especificaciones de producto (no ligado a
 ningún presupuesto concreto), pensado para que el equipo comercial pueda
 consultarlos y descargarlos. Se abre desde el botón "Fichas técnicas" de la
-cabecera: se pueden subir varios PDF a la vez (van directos a Storage, igual
-que los presupuestos) y clasificar por categoría/tipo/marca/modelo
-editando directamente en la tabla.
+cabecera:
+
+- Se pueden subir varios PDF a la vez (van directos a Storage, igual que los
+  presupuestos).
+- Al subir cada PDF, la IA intenta rellenar automáticamente categoría, tipo,
+  marca y modelo leyendo el propio documento; si no acierta o se quiere
+  reclasificar, hay un botón "IA" para repetirlo, y los campos siempre son
+  editables a mano.
+- La lista de la izquierda es buscable y filtrable por categoría/marca; al
+  seleccionar una ficha se ve su vista previa en PDF a la derecha, sin
+  necesidad de descargarla.
 
 ## Estructura del proyecto
 
@@ -109,6 +117,7 @@ app/
     pdf/[id]/             # URL firmada para ver el PDF de un presupuesto
     fichas/               # CRUD de fichas técnicas
     fichas/upload-url/    # URL firmada para subir un PDF de ficha técnica
+    fichas/extract/       # clasifica una ficha con IA (categoría/tipo/marca/modelo)
     fichas/[id]/download/ # URL firmada para ver/descargar una ficha técnica
   components/              # UI: subida/revisión, detalle, sidebar, fichas técnicas, comparador, cotizador
   login/, page.tsx          # pantalla de login y dashboard principal
@@ -131,3 +140,8 @@ $0.02 y $0.04 en tokens de la API de Anthropic. Para un volumen de ~100
 presupuestos/mes, el coste esperado es de $2-4 al mes. Configura una alerta
 de gasto en [console.anthropic.com](https://console.anthropic.com) como red
 de seguridad.
+
+Clasificar una ficha técnica con IA es más barato que extraer un presupuesto
+(solo pide 4 campos cortos, no una tabla completa): unos $0.01-$0.02 por
+ficha, y se paga una sola vez por documento salvo que se pulse "IA" para
+reclasificarlo.

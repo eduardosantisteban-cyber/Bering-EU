@@ -46,10 +46,10 @@ export async function createUploadUrl(bucket: string, filename: string) {
   return { id, path: data.path, signedUrl: data.signedUrl };
 }
 
-/** Descarga un PDF ya subido a Storage y lo devuelve en base64, para mandarlo a la API de Anthropic. */
-export async function downloadPdfAsBase64(path: string): Promise<string> {
+/** Descarga un PDF ya subido a Storage (de cualquier bucket) y lo devuelve en base64, para mandarlo a la API de Anthropic. */
+export async function downloadAsBase64(bucket: string, path: string): Promise<string> {
   const db = supabaseAdmin();
-  const { data, error } = await db.storage.from(PDF_BUCKET).download(path);
+  const { data, error } = await db.storage.from(bucket).download(path);
   if (error || !data) {
     throw new Error("No se pudo leer el PDF subido: " + (error?.message || "no encontrado"));
   }
