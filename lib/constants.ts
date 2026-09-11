@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "2.3.0";
+export const APP_VERSION = "2.4.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "2.4.0",
+    desc: "Botón \"Google Sheet\" en el Cotizador, junto al de Excel: crea la misma hoja (con fórmulas de precio/subtotal/IVA/total) directamente en Google Sheets, dentro de la Unidad compartida del equipo, vía una cuenta de servicio de Google Cloud",
+  },
   {
     version: "2.3.0",
     desc: "Integración experimental con Holded (CRM): desde el Cotizador, botón \"Crear presupuesto en Holded\" que busca/crea el contacto y crea el presupuesto como estimate — envío en un solo sentido, de esta app hacia Holded. Necesita probarse con una cuenta real antes de confiar en ella (ver README)",

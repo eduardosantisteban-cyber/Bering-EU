@@ -230,3 +230,22 @@ export async function sendToHolded(input: {
   });
   return jsonOrThrow(res);
 }
+
+/* -------- Google Sheets -------- */
+
+export interface QuoteSheetItem {
+  desc: string;
+  medidas: string;
+  cantidad: number;
+  precioCoste: number;
+  markup: number;
+}
+
+export async function createGoogleSheetQuote(items: QuoteSheetItem[]): Promise<{ id: string; url: string }> {
+  const res = await fetch("/api/cotizador/google-sheet", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  return jsonOrThrow(res);
+}

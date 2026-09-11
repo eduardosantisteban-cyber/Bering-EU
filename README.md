@@ -32,6 +32,8 @@ Copia `.env.example` a `.env.local` y rellena:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Panel de Supabase → Settings → API → `anon` `public` (segura de exponer) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys |
 | `HOLDED_API_KEY` | Panel de Holded → Ajustes → API. Opcional — sin ella, todo funciona igual salvo "Crear presupuesto en Holded" |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Ver "Google Sheet desde el Cotizador" más abajo. Opcional — sin ella, todo funciona igual salvo el botón "Google Sheet" |
+| `GOOGLE_DRIVE_FOLDER_ID` | Igual que arriba: ID de vuestra Unidad compartida (o una carpeta dentro) |
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` se usa solo para que el navegador suba el
 PDF directo a Supabase Storage con un PUT normal a una URL de subida firmada
@@ -131,6 +133,49 @@ mandarlo al cliente). Si algo falla, el mensaje de error del botón
 debería incluir la respuesta de Holded — con eso se puede ajustar
 `lib/holded.ts` sin tocar el resto de la app.
 
+## Google Sheet desde el Cotizador
+
+Además del botón "Excel" (que genera el archivo en el propio navegador),
+hay un botón "Google Sheet" que crea la misma hoja de cálculo — con las
+mismas fórmulas de precio de venta/subtotal/IVA/total — directamente en
+Google Sheets, dentro de vuestra Unidad compartida de Google Workspace.
+Usa una cuenta de servicio, así que nadie del equipo tiene que iniciar
+sesión con Google para que funcione:
+
+1. En [console.cloud.google.com](https://console.cloud.google.com), crea
+   un proyecto (o usa uno existente) y activa las API **Google Sheets
+   API** y **Google Drive API** (Library → busca cada una → Enable).
+2. **IAM y administración → Cuentas de servicio → Crear cuenta de
+   servicio**. No hace falta darle ningún rol a nivel de proyecto.
+3. Abre la cuenta de servicio creada → pestaña **Claves** → **Agregar
+   clave → Crear clave nueva → JSON**. Se descarga un archivo `.json`.
+4. Copia el `client_email` que aparece dentro de ese JSON (algo como
+   `nombre@proyecto.iam.gserviceaccount.com`).
+5. En Google Drive, abre vuestra **Unidad compartida** → **Gestionar
+   miembros** → añade ese email como miembro, con permiso **Gestor de
+   contenido** (o superior) — así es como la cuenta de servicio puede
+   crear archivos ahí.
+6. Copia el ID de esa Unidad compartida (o de una carpeta dentro): es el
+   trozo de la URL después de `/folders/` al abrirla en el navegador.
+   Eso va en `GOOGLE_DRIVE_FOLDER_ID`.
+7. Codifica el archivo `.json` completo en base64 y pégalo en
+   `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` (en Vercel, como una sola línea
+   larga):
+   ```bash
+   base64 -i ruta/a/tu-cuenta-de-servicio.json | pbcopy   # macOS
+   base64 -w0 ruta/a/tu-cuenta-de-servicio.json            # Linux
+   ```
+
+Igual que con Holded, `developers.google.com` estaba bloqueado desde el
+entorno donde se desarrolló esto, así que tampoco se pudo probar contra
+una cuenta real — la diferencia es que la API de Sheets/Drive es mucho
+más estable y conocida, y los fragmentos encontrados por buscadores
+confirmaron los detalles clave (formato de fórmulas, cómo target-ear la
+primera hoja sin conocer su nombre, cómo crear archivos en una Unidad
+compartida). Aun así, pruébalo primero con un presupuesto de prueba antes
+de usarlo con un cliente real, y si algo falla el mensaje de error debería
+incluir la respuesta de Google.
+
 ## Estructura del proyecto
 
 ```
@@ -146,6 +191,7 @@ app/
     fichas/extract/       # clasifica una ficha con IA (categoría/tipo/marca/modelo)
     fichas/[id]/download/ # URL firmada para ver/descargar una ficha técnica
     holded/send-estimate/ # crea el contacto y el presupuesto en Holded
+    cotizador/google-sheet/ # crea la hoja de Google con las líneas del cotizador
   components/              # UI: subida/revisión, detalle, sidebar, fichas técnicas, comparador, cotizador
   login/, page.tsx          # pantalla de login y dashboard principal
 lib/
@@ -155,6 +201,7 @@ lib/
   backup.ts                # payload/dedup del export-import de backup
   fichaMatch.ts             # empareja líneas del cotizador con fichas técnicas
   holded.ts                 # cliente mínimo de la API de Holded (ver aviso arriba)
+  googleSheets.ts            # crea y da formato a la hoja de Google del cotizador
   uploadDirect.ts           # PUT del navegador a una signed upload URL
   supabase/server.ts       # cliente de Supabase del servidor (service role)
 supabase/migrations/        # esquema SQL

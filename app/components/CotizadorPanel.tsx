@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { Copy, FileSpreadsheet, FileText, Loader2, Send, Trash2, X } from "lucide-react";
+import { Copy, FileSpreadsheet, FileText, Loader2, Send, Table, Trash2, X } from "lucide-react";
 import type { FlatRow } from "./types";
 import { fmtMoney } from "@/lib/format";
 import { priceLine, computeTotals } from "@/lib/pricing";
 import { matchesFicha } from "@/lib/fichaMatch";
-import { fetchFichas, getFichaDownloadUrl, sendToHolded } from "@/lib/apiClient";
+import { createGoogleSheetQuote, fetchFichas, getFichaDownloadUrl, sendToHolded } from "@/lib/apiClient";
 import type { FichaTecnica } from "@/lib/types";
 import { Button, inputStyleSm } from "./ui";
 
@@ -47,6 +47,7 @@ export default function CotizadorPanel({
   const [clienteName, setClienteName] = useState("");
   const [clienteEmail, setClienteEmail] = useState("");
   const [sendingToHolded, setSendingToHolded] = useState(false);
+  const [creatingSheet, setCreatingSheet] = useState(false);
 
   useEffect(() => {
     // Mejor esfuerzo: si falla, el cotizador sigue funcionando igual, solo
@@ -168,6 +169,31 @@ export default function CotizadorPanel({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Presupuesto");
     XLSX.writeFile(wb, `presupuesto_bering_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  function handleCreateGoogleSheet() {
+    setCreatingSheet(true);
+    const win = window.open("", "_blank");
+    const items = cartRows.map((r) => ({
+      desc: `${r.tipo_producto || ""} ${r.modelo || ""}`.trim(),
+      medidas: r.medidas || "",
+      cantidad: r.cantidad,
+      precioCoste: r.precioCoste,
+      markup: r.markup,
+    }));
+    openWhenReady(
+      win,
+      createGoogleSheetQuote(items)
+        .then((sheet) => {
+          onNotice?.("success", "Hoja de Google creada en vuestra Unidad compartida.");
+          return sheet.url;
+        })
+        .catch((err) => {
+          onNotice?.("error", "No se pudo crear la hoja de Google: " + (err as Error).message);
+          throw err;
+        })
+        .finally(() => setCreatingSheet(false))
+    );
   }
 
   async function handleSendToHolded() {
@@ -306,6 +332,15 @@ export default function CotizadorPanel({
             </Button>
             <Button variant="ghost-light" className="flex-1 justify-center" onClick={generateExcelQuote}>
               <FileSpreadsheet size={14} /> Excel
+            </Button>
+            <Button
+              variant="ghost-light"
+              className="flex-1 justify-center"
+              onClick={handleCreateGoogleSheet}
+              disabled={creatingSheet}
+            >
+              {creatingSheet ? <Loader2 size={14} className="animate-spin" /> : <Table size={14} />}
+              Google Sheet
             </Button>
           </div>
           {exportedText && (
