@@ -4,18 +4,36 @@ import type { FichaTecnica, Presupuesto, PresupuestoItem } from "./types";
 
 type PresupuestoRow = Omit<Presupuesto, "items">;
 
+// Supabase devuelve como máximo "Max rows" filas por consulta (1000 por defecto),
+// así que las tablas grandes se leen por páginas hasta agotarlas.
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
 export async function listPresupuestos(): Promise<Presupuesto[]> {
   const db = supabaseAdmin();
-  const { data: presupuestos, error } = await db
-    .from("presupuestos")
-    .select("*")
-    .order("fecha_presupuesto", { ascending: false, nullsFirst: false });
-  if (error) throw error;
+  const presupuestos = await fetchAllRows((from, to) =>
+    db
+      .from("presupuestos")
+      .select("*")
+      .order("fecha_presupuesto", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
-  const { data: items, error: itemsError } = await db
-    .from("presupuesto_items")
-    .select("*");
-  if (itemsError) throw itemsError;
+  const items = await fetchAllRows((from, to) =>
+    db.from("presupuesto_items").select("*").order("id", { ascending: true }).range(from, to),
+  );
 
   const itemsByPresupuesto = new Map<string, PresupuestoItem[]>();
   for (const item of items ?? []) {
