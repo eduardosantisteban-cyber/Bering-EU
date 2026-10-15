@@ -1,8 +1,19 @@
-# Bering EU — Presupuestos
+# Bering EU — Portal
 
-Aplicación web para subir presupuestos de proveedores en PDF, extraer los
-datos con IA, y consultarlos/compararlos entre compañeros. Reconstruida como
-app real (fuera de Claude.ai) a partir de un artefacto de Claude.ai.
+Punto de entrada único del equipo comercial de Bering EU:
+
+- **Inicio** (`/`): indicadores, oportunidades que necesitan atención,
+  ofertado vs ganado, estado de las automatizaciones y accesos directos.
+- **Oportunidades** (`/oportunidades`): buscador de la tabla «Solicitudes».
+- **Precios de proveedores** (`/proveedores`): subir presupuestos de
+  proveedores en PDF, extraer los datos con IA y consultarlos/compararlos
+  (la app original, reconstruida a partir de un artefacto de Claude.ai).
+- **Automatizaciones** (`/automatizaciones`): qué hace cada una, estado de
+  la última revisión y errores recientes.
+
+Las automatizaciones (Gmail → Holded, seguimiento a clientes, informe
+semanal…) corren en Google Apps Script (`gmail_a_holded.gs`, fuera de este
+repo); el portal solo **lee** lo que ese script deja en el Google Sheet.
 
 ## Stack
 
@@ -176,6 +187,36 @@ compartida). Aun así, pruébalo primero con un presupuesto de prueba antes
 de usarlo con un cliente real, y si algo falla el mensaje de error debería
 incluir la respuesta de Google.
 
+## Portal: oportunidades y automatizaciones
+
+Inicio, Oportunidades y Automatizaciones leen el Google Sheet «Solicitudes»
+que mantiene el script de Apps Script, con la misma cuenta de servicio de
+Google que usa el botón «Google Sheet» del Cotizador. Solo lectura:
+
+1. Configura `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` (ver sección siguiente) si
+   no lo está ya, y **activa la Google Sheets API** en ese proyecto de
+   Google Cloud.
+2. Comparte el Sheet «Solicitudes» **como Lector** con el email de la cuenta
+   de servicio (`...@...iam.gserviceaccount.com`). Si no está compartido, el
+   Inicio muestra un aviso con el email exacto.
+3. Pon en `SOLICITUDES_SHEET_ID` el ID de ese Sheet (el mismo `HOJA_ID` de
+   las propiedades del script).
+4. Opcional: `PORTAL_URL_DRIVE`, `PORTAL_URL_FLUJO`, `PORTAL_URL_APPS_SCRIPT`
+   (y `PORTAL_URL_HOLDED` / `PORTAL_URL_GUIA` para cambiar los de por
+   defecto) añaden accesos directos en el Inicio.
+
+Qué se lee:
+
+| Pestaña | Para qué | La escribe |
+| --- | --- | --- |
+| `Solicitudes` (A:V) | Oportunidades, estados, importes, seguimiento | El script, en cada revisión |
+| `Sistema` (oculta) | Última revisión, quién, duración, errores, modo | El script, al final de cada revisión (versión del 15/10/2026 o posterior) |
+| `Errores` (oculta) | Últimos 200 errores avisados por email | El script, al avisar de un error |
+
+Las reglas de «necesitan atención» y del seguimiento (`lib/solicitudes.ts`)
+son una copia de las del script (`motivoAtencion_`, `siguientePasoSeguimiento_`):
+si se cambian los días allí, cambiarlos también en `lib/portalConfig.ts`.
+
 ## Estructura del proyecto
 
 ```
@@ -192,8 +233,13 @@ app/
     fichas/[id]/download/ # URL firmada para ver/descargar una ficha técnica
     holded/send-estimate/ # crea el contacto y el presupuesto en Holded
     cotizador/google-sheet/ # crea la hoja de Google con las líneas del cotizador
+    portal/               # lee Solicitudes, Sistema y Errores del Google Sheet de la automatización
   components/              # UI: subida/revisión, detalle, sidebar, fichas técnicas, comparador, cotizador
-  login/, page.tsx          # pantalla de login y dashboard principal
+                           # + PortalNav (navegación común) y portal.tsx (piezas del portal)
+  page.tsx                 # Inicio del portal
+  oportunidades/, automatizaciones/  # secciones del portal
+  proveedores/page.tsx     # base de precios de proveedores (antes en /)
+  login/                   # pantalla de login
 lib/
   anthropic.ts             # llamada a la API de Anthropic + prompt de extracción
   db.ts                    # acceso a Supabase (listar/crear/actualizar/borrar)
@@ -201,7 +247,9 @@ lib/
   backup.ts                # payload/dedup del export-import de backup
   fichaMatch.ts             # empareja líneas del cotizador con fichas técnicas
   holded.ts                 # cliente mínimo de la API de Holded (ver aviso arriba)
-  googleSheets.ts            # crea y da formato a la hoja de Google del cotizador
+  googleSheets.ts            # crea la hoja del cotizador y lee el Sheet de Solicitudes
+  solicitudes.ts             # reglas del portal: atención, seguimiento, indicadores (con tests)
+  portalConfig.ts            # días de seguimiento/avisos y accesos directos del Inicio
   uploadDirect.ts           # PUT del navegador a una signed upload URL
   supabase/server.ts       # cliente de Supabase del servidor (service role)
 supabase/migrations/        # esquema SQL

@@ -1,386 +1,209 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
-import { ArrowUpDown, BookOpen, Loader2, LogOut, Package, Scale, Search, ShoppingCart, Upload, X } from "lucide-react";
-import type { Presupuesto } from "@/lib/types";
-import { APP_VERSION } from "@/lib/constants";
-import { fetchPresupuestos, logout } from "@/lib/apiClient";
-import { fmtMoney, normalizeMarca, normalizeStr } from "@/lib/format";
-import { Button, Notice, inputStyleSm } from "./components/ui";
-import type { FlatRow } from "./components/types";
-import Sidebar from "./components/Sidebar";
-import UploadModal from "./components/UploadModal";
-import DetailModal from "./components/DetailModal";
-import ComparadorModal from "./components/ComparadorModal";
-import CotizadorPanel, { type CartLine } from "./components/CotizadorPanel";
-import ChangelogModal from "./components/ChangelogModal";
-import FichasTecnicasModal from "./components/FichasTecnicasModal";
+import { useMemo } from "react";
+import Link from "next/link";
+import { ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { PortalHeader } from "./components/PortalNav";
+import {
+  Cargando,
+  EnlacesOportunidad,
+  ErrorDatos,
+  GraficoMeses,
+  Kpi,
+  SelectorPersona,
+  TablaTipos,
+  Tarjeta,
+  eur,
+  eurCorto,
+  haceCuanto,
+  personasDe,
+  usePersona,
+  usePortalData,
+} from "./components/portal";
+import { indicadores, nombreDeEmail, ordenAtencion, porTipo, serieMensual } from "@/lib/solicitudes";
 
-type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marca";
+// Inicio del portal: cómo vamos, qué necesita atención, estado de las automatizaciones y accesos directos.
 
-export default function HomePage() {
-  const [db, setDb] = useState<Presupuesto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ type: "error" | "success"; message: string } | null>(null);
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+const MAX_ATENCION = 8;
 
-  const [search, setSearch] = useState("");
-  const [filterCategoria, setFilterCategoria] = useState("");
-  const [filterTipo, setFilterTipo] = useState("");
-  const [filterMarca, setFilterMarca] = useState("");
-  const [filterYear, setFilterYear] = useState("");
-  const [sortBy, setSortBy] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
-    key: "fecha_presupuesto",
-    dir: "desc",
-  });
+export default function InicioPage() {
+  const { data, error, loading, refreshing, recargar } = usePortalData();
+  const [persona, setPersona] = usePersona();
 
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
-  const [comparadorOpen, setComparadorOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [changelogOpen, setChangelogOpen] = useState(false);
-  const [fichasOpen, setFichasOpen] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const todas = useMemo(() => data?.oportunidades ?? [], [data]);
+  const personas = useMemo(() => personasDe(todas), [todas]);
+  const quien = personas.includes(persona) ? persona : "";
+  const ops = useMemo(() => (quien ? todas.filter((o) => o.registradoPor === quien) : todas), [todas, quien]);
+  const ahora = useMemo(() => (data ? new Date(data.generado) : new Date()), [data]);
 
-  const showNotice = useCallback((type: "error" | "success", message: string) => {
-    setNotice({ type, message });
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), type === "error" ? 8000 : 4000);
-  }, []);
+  const k = useMemo(() => indicadores(ops, ahora), [ops, ahora]);
+  const meses = useMemo(() => serieMensual(ops, ahora, 6), [ops, ahora]);
+  const tipos = useMemo(() => porTipo(ops), [ops]);
+  const atencion = useMemo(() => ops.filter((o) => o.atencion).sort(ordenAtencion), [ops]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await fetchPresupuestos();
-      setDb(data);
-      setDbError(null);
-    } catch (err) {
-      const message = (err as Error).message || "No se pudo cargar la base de datos";
-      setDbError(message);
-      showNotice("error", message);
-    } finally {
-      setLoading(false);
-    }
-  }, [showNotice]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de datos
-    refresh();
-  }, [refresh]);
-
-  const rows: FlatRow[] = useMemo(() => {
-    const out: FlatRow[] = [];
-    for (const rec of db) {
-      for (const it of rec.items ?? []) {
-        out.push({ ...it, __rec: rec });
-      }
-    }
-    return out;
-  }, [db]);
-
-  const tiposDisponibles = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.tipo_producto).filter(Boolean))).sort() as string[],
-    [rows]
-  );
-  const marcasDisponibles = useMemo(() => {
-    // Agrupa variantes de la misma marca (p. ej. "NOVOFERM ALSAL, SA" y
-    // "NOVOFERM ALSAL, S.A.") bajo una sola entrada del filtro, sin tocar
-    // el texto tal como está guardado en cada línea.
-    const map = new Map<string, string>(); // clave normalizada -> primera variante vista
-    for (const r of rows) {
-      if (!r.marca) continue;
-      const key = normalizeMarca(r.marca);
-      if (!key || map.has(key)) continue;
-      map.set(key, r.marca);
-    }
-    return Array.from(map.values()).sort();
-  }, [rows]);
-  const aniosDisponibles = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          rows
-            .map((r) => r.__rec.fecha_presupuesto)
-            .filter(Boolean)
-            .map((f) => String(f).slice(0, 4))
-        )
-      ).sort((a, b) => b.localeCompare(a)),
-    [rows]
-  );
-
-  const filteredRows = useMemo(() => {
-    let out = rows;
-    if (filterCategoria) out = out.filter((r) => normalizeStr(r.categoria) === normalizeStr(filterCategoria));
-    if (filterTipo) out = out.filter((r) => r.tipo_producto === filterTipo);
-    if (filterMarca) out = out.filter((r) => normalizeMarca(r.marca) === normalizeMarca(filterMarca));
-    if (filterYear) out = out.filter((r) => r.__rec.fecha_presupuesto?.startsWith(filterYear));
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      out = out.filter((r) =>
-        [r.tipo_producto, r.marca, r.modelo, r.medidas, r.__rec.proveedor, r.__rec.numero_presupuesto]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(q))
-      );
-    }
-    out = [...out].sort((a, b) => {
-      let av: string | number, bv: string | number;
-      if (sortBy.key === "fecha_presupuesto") {
-        av = a.__rec.fecha_presupuesto || "";
-        bv = b.__rec.fecha_presupuesto || "";
-      } else if (sortBy.key === "precio_unitario") {
-        av = a.precio_unitario ?? -Infinity;
-        bv = b.precio_unitario ?? -Infinity;
-      } else {
-        av = (a[sortBy.key] as string) || "";
-        bv = (b[sortBy.key] as string) || "";
-      }
-      if (av < bv) return sortBy.dir === "asc" ? -1 : 1;
-      if (av > bv) return sortBy.dir === "asc" ? 1 : -1;
-      return 0;
-    });
-    return out;
-  }, [rows, filterCategoria, filterTipo, filterMarca, filterYear, search, sortBy]);
-
-  function toggleSort(key: SortKey) {
-    setSortBy((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
-  }
-
-  function inCart(itemId: string) {
-    return cart.some((c) => c.itemId === itemId);
-  }
-  function toggleCart(itemId: string) {
-    setCart((c) =>
-      c.some((x) => x.itemId === itemId)
-        ? c.filter((x) => x.itemId !== itemId)
-        : [...c, { itemId, cantidad: 1, markup: 0 }]
-    );
-  }
-
-  const detailRecord = db.find((r) => r.id === detailRecordId) ?? null;
-
-  async function handleLogout() {
-    await logout();
-    window.location.href = "/login";
-  }
+  const sistema = data?.sistema ?? {};
+  const ultima = typeof sistema["Última revisión"] === "string" ? (sistema["Última revisión"] as string) : null;
+  const minutos = ultima ? (ahora.getTime() - new Date(ultima).getTime()) / 60000 : null;
+  const automatizacionOk = minutos !== null && minutos < 30;
+  const erroresRecientes = (data?.errores ?? []).filter((e) => ahora.getTime() - new Date(e.fecha).getTime() < 86400000).length;
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex items-center justify-between bg-black px-5 py-3">
-        <div className="flex items-center gap-3">
-          <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
-          <button
-            onClick={() => setChangelogOpen(true)}
-            className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/80 hover:bg-white/20 hover:text-white"
-          >
-            v{APP_VERSION}
-          </button>
-          <p className="hidden text-xs text-white/60 sm:block">Base de datos de presupuestos de proveedores</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost-dark" onClick={() => setFichasOpen(true)}>
-            <BookOpen size={15} /> Fichas técnicas
-          </Button>
-          <Button variant="ghost-dark" onClick={() => setComparadorOpen(true)}>
-            <Scale size={15} /> Comparador
-          </Button>
-          <Button variant="ghost-dark" onClick={() => setCartOpen(true)}>
-            <ShoppingCart size={15} /> Cotizador {cart.length > 0 && `(${cart.length})`}
-          </Button>
-          <Button variant="primary" onClick={() => setUploadOpen(true)}>
-            <Upload size={15} /> Subir presupuesto
-          </Button>
-          <button onClick={handleLogout} className="rounded p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Salir">
-            <LogOut size={16} />
-          </button>
-        </div>
-      </header>
+      <PortalHeader>
+        <button
+          onClick={recargar}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10 disabled:opacity-50"
+        >
+          {refreshing && <Loader2 size={14} className="animate-spin" />} Actualizar
+        </button>
+      </PortalHeader>
 
-      <div className="flex flex-1">
-        <Sidebar
-          db={db}
-          linesCount={rows.length}
-          dbError={dbError}
-          onRefresh={refresh}
-          onNotice={showNotice}
-          filterCategoria={filterCategoria}
-          setFilterCategoria={setFilterCategoria}
-          filterTipo={filterTipo}
-          setFilterTipo={setFilterTipo}
-          tiposDisponibles={tiposDisponibles}
-          filterMarca={filterMarca}
-          setFilterMarca={setFilterMarca}
-          marcasDisponibles={marcasDisponibles}
-          filterYear={filterYear}
-          setFilterYear={setFilterYear}
-          aniosDisponibles={aniosDisponibles}
-        />
-
-        <main className="flex-1 p-5">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#606060]" />
-              <input
-                className={inputStyleSm + " w-full pl-8"}
-                placeholder="Buscar por tipo, marca, modelo, medidas, proveedor…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            {(filterCategoria || filterTipo || filterMarca || filterYear || search) && (
-              <button
-                onClick={() => {
-                  setFilterCategoria("");
-                  setFilterTipo("");
-                  setFilterMarca("");
-                  setFilterYear("");
-                  setSearch("");
-                }}
-                className="flex items-center gap-1 text-xs text-[#606060] hover:text-[#e83038]"
-              >
-                <X size={12} /> Limpiar filtros
-              </button>
-            )}
-          </div>
-
-          {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-[#606060]">
-            <Loader2 size={18} className="animate-spin" /> Cargando…
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-20 text-[#606060]">
-            <Package size={28} />
-            <p className="text-sm">
-              {db.length === 0 ? "Aún no hay presupuestos. Sube el primer PDF." : "No hay líneas que coincidan con los filtros."}
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-5 sm:px-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-[#282828]">Inicio</h1>
+            <p className="text-sm text-[#606060]">
+              Oportunidades de la tabla Solicitudes{data ? ` · datos de ${haceCuanto(data.generado)}` : ""}
             </p>
           </div>
+          {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
+        </div>
+
+        {loading ? (
+          <Cargando />
+        ) : error && !data ? (
+          <ErrorDatos mensaje={error} onReintentar={recargar} />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[#e2e0dc] bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-[#f5f4f2] text-left text-xs text-[#606060]">
-                <tr>
-                  <SortableTh label="Categoría" />
-                  <SortableTh label="Tipo" sortKey="tipo_producto" sortBy={sortBy} onSort={toggleSort} />
-                  <SortableTh label="Marca" sortKey="marca" sortBy={sortBy} onSort={toggleSort} />
-                  <th className="px-3 py-2">Modelo</th>
-                  <th className="px-3 py-2">Medidas</th>
-                  <SortableTh label="Precio" sortKey="precio_unitario" sortBy={sortBy} onSort={toggleSort} align="right" />
-                  <th className="px-3 py-2 text-right">Cant.</th>
-                  <SortableTh label="Fecha" sortKey="fecha_presupuesto" sortBy={sortBy} onSort={toggleSort} />
-                  <th className="px-3 py-2">Nº presupuesto</th>
-                  <th className="px-3 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="cursor-pointer border-t border-[#e2e0dc] hover:bg-[#f5f4f2]"
-                    onClick={() => setDetailRecordId(r.__rec.id)}
-                  >
-                    <td className="px-3 py-2">{r.categoria}</td>
-                    <td className="px-3 py-2">{r.tipo_producto}</td>
-                    <td className="px-3 py-2">{r.marca}</td>
-                    <td className="px-3 py-2">{r.modelo}</td>
-                    <td className="px-3 py-2">{r.medidas}</td>
-                    <td className="px-3 py-2 text-right font-medium">{fmtMoney(r.precio_unitario)}</td>
-                    <td className="px-3 py-2 text-right">{r.cantidad}</td>
-                    <td className="px-3 py-2">
-                      {r.__rec.fecha_presupuesto
-                        ? new Date(r.__rec.fecha_presupuesto).toLocaleDateString("es-ES")
-                        : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-[#606060]">{r.__rec.numero_presupuesto || "—"}</td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleCart(r.id);
-                        }}
-                        className={`rounded p-1.5 ${inCart(r.id) ? "bg-[#e83038] text-white" : "text-[#606060] hover:bg-white"}`}
-                        aria-label="Añadir al cotizador"
-                      >
-                        <ShoppingCart size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <div className="col-span-2 lg:col-span-1">
+                <Kpi label="Cartera abierta" valor={eurCorto(k.carteraAbierta)} sub={`${k.nAbiertas} en Holded o enviadas`} />
+              </div>
+              <Kpi label="Enviados esperando" valor={String(k.enviados)} sub={eurCorto(k.enviadosImporte)} />
+              <Kpi label="Por presupuestar" valor={String(k.porPresupuestar)} sub="pendientes, listos o con error" alerta={k.porPresupuestar > 0} />
+              <Kpi label={`Ganado en ${ahora.getFullYear()}`} valor={eurCorto(k.ganadoAnio)} sub={`${k.nGanadosAnio} oportunidades`} />
+              <Kpi
+                label="Tasa de cierre"
+                valor={k.tasaCierre90 === null ? "—" : Math.round(k.tasaCierre90 * 100) + "%"}
+                sub={`últimos 90 días · ${k.nCerrados90} cerradas`}
+              />
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+              <Tarjeta
+                titulo={`Necesitan atención · ${atencion.length}`}
+                sub="Lo que necesita a una persona. Lo que el seguimiento automático ya gestiona no aparece."
+                accion={
+                  atencion.length > MAX_ATENCION ? (
+                    <Link href="/oportunidades?ver=atencion" className="whitespace-nowrap text-xs font-medium text-[#e83038] hover:underline">
+                      Ver las {atencion.length}
+                    </Link>
+                  ) : null
+                }
+              >
+                {atencion.length === 0 ? (
+                  <p className="py-2 text-sm font-medium text-[#1e7e34]">Nada pendiente.</p>
+                ) : (
+                  <ul className="divide-y divide-[#efefec]">
+                    {atencion.slice(0, MAX_ATENCION).map((o) => {
+                      const llamar = /^Llamar/.test(o.atencion);
+                      return (
+                        <li key={o.codigo} className={`flex flex-wrap items-start gap-x-3 gap-y-1 py-2 ${llamar ? "-mx-2 rounded bg-[#fff4e0] px-2" : ""}`}>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm">
+                              <span className="font-semibold">{o.codigo}</span> · {o.empresa || "—"}
+                              {!quien && o.registradoPor && <span className="text-xs text-[#8a8a8a]"> · {nombreDeEmail(o.registradoPor)}</span>}
+                            </p>
+                            <p className="text-sm font-medium text-[#282828]">{o.atencion}</p>
+                          </div>
+                          <div className="text-right text-xs text-[#606060]">
+                            <p className="tabular-nums">{o.diasAtencion} días</p>
+                            <p className="tabular-nums">{eur(o.importe)}</p>
+                          </div>
+                          <div className="w-full">
+                            <EnlacesOportunidad o={o} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Tarjeta>
+
+              <div className="flex min-w-0 flex-col gap-4">
+                <Tarjeta
+                  titulo="Automatizaciones"
+                  accion={
+                    <Link href="/automatizaciones" className="text-xs font-medium text-[#e83038] hover:underline">
+                      Detalle
+                    </Link>
+                  }
+                >
+                  {ultima ? (
+                    <div className="flex items-start gap-3">
+                      <span className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${automatizacionOk ? "bg-emerald-500" : "bg-[#e83038]"}`} aria-hidden />
+                      <div className="text-sm">
+                        <p className="font-medium">
+                          {automatizacionOk ? "Funcionando" : "Sin revisiones recientes"} · última revisión {haceCuanto(ultima)}
+                        </p>
+                        <p className="text-[#606060]">
+                          {erroresRecientes ? `${erroresRecientes} error(es) en las últimas 24 h` : "Sin errores en las últimas 24 h"}
+                          {sistema["Modo"] ? ` · ${sistema["Modo"]}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="flex items-start gap-2 text-sm text-[#606060]">
+                      <Sparkles size={15} className="mt-0.5 shrink-0" />
+                      El estado aparecerá aquí cuando el script de Apps Script escriba la pestaña «Sistema» (versión del 15/10 o posterior).
+                    </p>
+                  )}
+                </Tarjeta>
+
+                <Tarjeta titulo="Accesos directos">
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                    {(data?.enlaces ?? []).map((e) => (
+                      <li key={e.id}>
+                        <a
+                          href={e.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex h-full items-start gap-2 rounded-md border border-[#e2e0dc] p-2.5 hover:border-[#e83038]"
+                        >
+                          <ExternalLink size={14} className="mt-0.5 shrink-0 text-[#e83038]" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold">{e.titulo}</span>
+                            <span className="block text-xs text-[#606060]">{e.descripcion}</span>
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                    <li>
+                      <Link href="/proveedores" className="flex h-full items-start gap-2 rounded-md border border-[#e2e0dc] p-2.5 hover:border-[#e83038]">
+                        <ExternalLink size={14} className="mt-0.5 shrink-0 text-[#e83038]" />
+                        <span>
+                          <span className="block text-sm font-semibold">Precios de proveedores</span>
+                          <span className="block text-xs text-[#606060]">Base de datos, comparador y cotizador</span>
+                        </span>
+                      </Link>
+                    </li>
+                  </ul>
+                </Tarjeta>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
+              <Tarjeta titulo="Ofertado vs ganado" sub="Últimos 6 meses · base imponible. Ofertado por fecha de solicitud; ganado por fecha en que se ganó.">
+                <GraficoMeses meses={meses} />
+              </Tarjeta>
+              <Tarjeta titulo="Por tipo de producto" sub="Desde el inicio · una solicitud con varios tipos cuenta en cada uno.">
+                <TablaTipos tipos={tipos} />
+              </Tarjeta>
+            </div>
           </div>
         )}
-        </main>
-      </div>
-
-      {uploadOpen && (
-        <UploadModal
-          onClose={() => setUploadOpen(false)}
-          onSaved={(proveedor) => {
-            refresh();
-            showNotice("success", `Presupuesto de ${proveedor} guardado correctamente.`);
-          }}
-          onError={(message) => showNotice("error", message)}
-        />
-      )}
-
-      {detailRecord && (
-        <DetailModal
-          presupuesto={detailRecord}
-          onClose={() => setDetailRecordId(null)}
-          onUpdated={(saved) => {
-            setDb((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
-            showNotice("success", "Cambios guardados.");
-          }}
-          onDeleted={(id) => {
-            setDb((prev) => prev.filter((p) => p.id !== id));
-            setDetailRecordId(null);
-            showNotice("success", "Presupuesto eliminado.");
-          }}
-          onError={(message) => showNotice("error", message)}
-        />
-      )}
-
-      {comparadorOpen && <ComparadorModal rows={rows} onClose={() => setComparadorOpen(false)} />}
-
-      {cartOpen && (
-        <CotizadorPanel rows={rows} cart={cart} setCart={setCart} onClose={() => setCartOpen(false)} onNotice={showNotice} />
-      )}
-
-      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
-
-      {fichasOpen && <FichasTecnicasModal onClose={() => setFichasOpen(false)} onNotice={showNotice} />}
-
-      {notice && <Notice type={notice.type} message={notice.message} />}
+      </main>
     </div>
-  );
-}
-
-function SortableTh({
-  label,
-  sortKey,
-  sortBy,
-  onSort,
-  align,
-}: {
-  label: string;
-  sortKey?: SortKey;
-  sortBy?: { key: SortKey; dir: "asc" | "desc" };
-  onSort?: (key: SortKey) => void;
-  align?: "right";
-}) {
-  if (!sortKey || !onSort) {
-    return <th className={`px-3 py-2 ${align === "right" ? "text-right" : ""}`}>{label}</th>;
-  }
-  const active = sortBy?.key === sortKey;
-  return (
-    <th className={`px-3 py-2 ${align === "right" ? "text-right" : ""}`}>
-      <button
-        onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 ${active ? "text-[#e83038]" : ""}`}
-      >
-        {label}
-        <ArrowUpDown size={11} />
-      </button>
-    </th>
   );
 }

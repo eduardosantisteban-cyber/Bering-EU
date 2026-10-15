@@ -166,3 +166,45 @@ export async function createQuoteSheet(items: QuoteSheetItem[]): Promise<QuoteSh
 
   return { id: file.id, url: `https://docs.google.com/spreadsheets/d/${file.id}/edit` };
 }
+
+// ───────── Lectura de hojas (portal: tabla Solicitudes) ─────────
+
+/** Email de la cuenta de servicio (para decir con quién hay que compartir la hoja). */
+export function serviceAccountEmail(): string {
+  try {
+    return getServiceAccount().client_email;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Lee varios rangos de una hoja de una sola vez.
+ * `render`: "UNFORMATTED_VALUE" (números y fechas como número de serie) o "FORMULA" (para los HYPERLINK).
+ * Un rango de una pestaña que no existe hace fallar toda la llamada, así que las pestañas opcionales
+ * se leen aparte con `leerRangoOpcional`.
+ */
+export async function leerRangos(
+  spreadsheetId: string,
+  ranges: string[],
+  render: "UNFORMATTED_VALUE" | "FORMULA" = "UNFORMATTED_VALUE"
+): Promise<unknown[][][]> {
+  const token = await getAccessToken();
+  const qs = ranges.map((r) => "ranges=" + encodeURIComponent(r)).join("&");
+  const data = (await googleFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${qs}` +
+      `&valueRenderOption=${render}&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS`,
+    token
+  )) as { valueRanges?: { values?: unknown[][] }[] };
+  return (data.valueRanges || []).map((v) => v.values || []);
+}
+
+/** Como leerRangos con un solo rango, pero devuelve [] si la pestaña no existe todavía. */
+export async function leerRangoOpcional(spreadsheetId: string, range: string): Promise<unknown[][]> {
+  try {
+    return (await leerRangos(spreadsheetId, [range]))[0] || [];
+  } catch (err) {
+    if (/Unable to parse range|400/.test((err as Error).message)) return [];
+    throw err;
+  }
+}
