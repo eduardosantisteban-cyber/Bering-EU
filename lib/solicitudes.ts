@@ -1,5 +1,6 @@
-import { AVISOS, SEGUIMIENTO, TIPOS_PRODUCTO } from "./portalConfig";
+import { AVISOS, MARCAS, MARCA_PRINCIPAL, SEGUIMIENTO, TIPOS_PRODUCTO } from "./portalConfig";
 import { normalizeStr } from "./format";
+import { provinciaDeTexto } from "./provincias";
 
 // Lectura de la tabla "Solicitudes" (Google Sheet de la automatización) y
 // las reglas del panel: "necesitan atención", indicadores, serie mensual y
@@ -8,8 +9,12 @@ import { normalizeStr } from "./format";
 // Columnas (1 = A), igual que COL en gmail_a_holded.gs:
 //  A fecha email · B Nº oportunidad (HYPERLINK al Sheet) · C empresa · D contacto · E email
 //  F productos · K asunto · L enlace Gmail · M registrado por · N estado
+//  G cantidades · H medidas · I resumen · J adjuntos
 //  O presupuesto Holded (HYPERLINK al PDF) · P fecha estado · Q importe (base)
 //  S seguimiento · T sin seguimiento (casilla) · U seguimiento 2 · V aviso llamada
+//  W motivo pérdida · X canal · Y provincia (las tres las crea el script desde el 20/10/2026)
+
+export const COL = { MOTIVO_PERDIDA: 23, CANAL: 24, PROVINCIA: 25, SIN_SEGUIMIENTO: 20 } as const;
 
 export const ESTADOS = {
   PENDIENTE: "Pendiente presupuesto",
@@ -45,6 +50,31 @@ export interface Oportunidad {
   sinSeguimiento: boolean;
   atencion: string; // motivo ("" si no necesita nada)
   diasAtencion: number | null;
+  /** Fila de la hoja Solicitudes (para escribir motivo de pérdida o "sin seguimiento") */
+  fila: number;
+  cantidades: string;
+  medidas: string;
+  resumen: string;
+  adjuntos: string;
+  marca: string; // "Bering EU", "Muelle Max"…
+  canal: string; // formulario web, info@, Muelle Max, email directo…
+  provincia: string;
+  motivoPerdida: string;
+  /** Primera vez que el presupuesto se creó en Holded (historial de estados o histórico de ofertas) */
+  fechaPresupuesto: string | null;
+  /** Días desde la solicitud hasta el presupuesto (1 decimal) */
+  tiempoRespuesta: number | null;
+  margen: Margen | null;
+  proximoSeguimiento: { nombre: string; fecha: string } | null;
+}
+
+export interface Margen {
+  numero: string; // última revisión (BEUQxxx-B)
+  venta: number; // base imponible, con descuento
+  coste: number;
+  pct: number; // (venta - coste) / venta
+  sinCoste: number; // líneas con precio pero sin coste
+  fecha: string; // primera fecha del presupuesto (aaaa-mm-dd)
 }
 
 const DIA = 86400000;
@@ -145,7 +175,7 @@ export function motivoAtencion(
 
 /**
  * Convierte las filas de la hoja (valores sin formato + fórmulas de B y O) en oportunidades.
- * `valores[k]` es la fila k+2 (A…V); `formulasB[k]` / `formulasO[k]` las fórmulas de esas celdas.
+ * `valores[k]` es la fila k+2 (A…Y); `formulasB[k]` / `formulasO[k]` las fórmulas de esas celdas.
  */
 export function parsearSolicitudes(
   valores: unknown[][],
@@ -183,7 +213,21 @@ export function parsearSolicitudes(
       sinSeguimiento: c(20) === true || String(c(20)).toUpperCase() === "TRUE",
       atencion: "",
       diasAtencion: null,
+      fila: k + 2,
+      cantidades: txt(c(7), 200),
+      medidas: txt(c(8), 200),
+      resumen: txt(c(9), 900),
+      adjuntos: txt(c(10), 200),
+      marca: marcaDeCodigo(codigo),
+      canal: txt(c(COL.CANAL), 40) || canalDeducido(codigo, txt(c(11), 160)),
+      provincia: txt(c(COL.PROVINCIA), 40) || provinciaDeTexto([c(9), c(11), c(8)].map((x) => String(x ?? "")).join("\n")),
+      motivoPerdida: txt(c(COL.MOTIVO_PERDIDA), 60),
+      fechaPresupuesto: null,
+      tiempoRespuesta: null,
+      margen: null,
+      proximoSeguimiento: null,
     };
+    if (o.estado === ESTADOS.ENVIADO && !o.sinSeguimiento) o.proximoSeguimiento = proximoSeguimiento(fe, o.seguimiento);
     const a = motivoAtencion(o, ahora);
     if (a) {
       o.atencion = a.motivo;
@@ -308,4 +352,228 @@ export function nombreDeEmail(email: string): string {
   if (!email) return "—";
   const x = email.split("@")[0].split(/[._-]/)[0];
   return x.charAt(0).toUpperCase() + x.slice(1);
+}
+
+// ───────── Marca, canal, seguimiento ─────────
+
+/** Marca por el prefijo del código (MMQ123 → Muelle Max). */
+export function marcaDeCodigo(codigo: string): string {
+  const c = codigo.trim().toUpperCase();
+  const m = MARCAS.find((x) => new RegExp("^" + x.prefijo.toUpperCase() + "\\d").test(c));
+  return m ? m.nombre : MARCA_PRINCIPAL;
+}
+
+/** Canal de las filas antiguas (sin columna Canal): solo se distingue formulario web y las marcas. */
+export function canalDeducido(codigo: string, asunto: string): string {
+  const marca = marcaDeCodigo(codigo);
+  if (marca !== MARCA_PRINCIPAL) return marca;
+  if (/^\s*(formulario web|\[?form beringeu)/i.test(asunto)) return "Formulario web";
+  return "Email (sin detalle)";
+}
+
+/** Próximo email / aviso de seguimiento previsto (null si no queda ninguno o está parado). */
+export function proximoSeguimiento(
+  fechaEnvio: Date | null,
+  marcas: [string, string, string]
+): { nombre: string; fecha: string } | null {
+  if (!fechaEnvio) return null;
+  const pasos = [
+    { nombre: "1er email", dias: SEGUIMIENTO.DIAS_1 },
+    { nombre: "2º email", dias: SEGUIMIENTO.DIAS_2 },
+    { nombre: "Aviso para llamar", dias: SEGUIMIENTO.DIAS_LLAMADA },
+  ];
+  let anterior = fechaEnvio;
+  let diaAnterior = 0;
+  for (let i = 0; i < pasos.length; i++) {
+    const p = pasos[i];
+    if (!p.dias) continue;
+    const marca = (marcas[i] || "").trim();
+    if (marca && !/^prueba/i.test(marca)) {
+      if (/^(no enviado|no avisado|error)/i.test(marca)) return null;
+      anterior = fechaDeCelda(marca) || anterior;
+      diaAnterior = p.dias;
+      continue;
+    }
+    const t = Math.max(fechaEnvio.getTime() + p.dias * DIA, anterior.getTime() + (p.dias - diaAnterior) * DIA);
+    return { nombre: p.nombre, fecha: new Date(t).toISOString() };
+  }
+  return null;
+}
+
+// ───────── Datos de fuera de la hoja: historial de estados y márgenes ─────────
+
+/** Pestaña "Historial estados" (A fecha · B código · C de · D a) → primera fecha en Holded/enviado por código. */
+export function fechasPresupuesto(historial: unknown[][]): Record<string, Date> {
+  const res: Record<string, Date> = {};
+  for (const r of historial) {
+    if (!r) continue;
+    const a = String(r[3] ?? "").trim();
+    if (a !== ESTADOS.HOLDED && a !== ESTADOS.ENVIADO) continue;
+    const d = fechaDeCelda(r[0]) || (typeof r[0] === "string" && /^\d{4}-\d{2}-\d{2}/.test(r[0]) ? new Date(r[0]) : null);
+    const c = String(r[1] ?? "").trim();
+    if (d && c && (!res[c] || d < res[c])) res[c] = d;
+  }
+  return res;
+}
+
+export interface LineaOferta {
+  codigo: string | null;
+  numero: string | null;
+  fecha: string | null;
+  uds: number | string | null;
+  precio_unit: number | string | null;
+  coste_unit: number | string | null;
+  descuento: number | string | null;
+}
+
+/** Margen de la última revisión de cada presupuesto (tabla ofertas_bering de Supabase). */
+export function margenesDeOfertas(lineas: LineaOferta[]): Record<string, Margen> {
+  const grupos: Record<string, { revisiones: Record<string, LineaOferta[]>; fecha: string }> = {};
+  for (const x of lineas) {
+    const c = String(x.codigo || "").trim();
+    if (!c) continue;
+    const g = (grupos[c] ||= { revisiones: {}, fecha: "" });
+    const num = String(x.numero || c);
+    (g.revisiones[num] ||= []).push(x);
+    const f = String(x.fecha || "");
+    if (f && (!g.fecha || f < g.fecha)) g.fecha = f;
+  }
+  const res: Record<string, Margen> = {};
+  for (const [c, g] of Object.entries(grupos)) {
+    const ultima = Object.keys(g.revisiones).sort().pop()!;
+    let venta = 0,
+      coste = 0,
+      sinCoste = 0;
+    for (const x of g.revisiones[ultima]) {
+      const uds = Number(x.uds) || 0;
+      const precio = Number(x.precio_unit) || 0;
+      let d = Number(x.descuento) || 0;
+      if (d > 1) d = d / 100;
+      venta += uds * precio * (1 - d);
+      const cu = Number(x.coste_unit);
+      if (cu > 0) coste += uds * cu;
+      else if (precio > 0) sinCoste++;
+    }
+    if (venta > 0) {
+      res[c] = {
+        numero: ultima,
+        venta: Math.round(venta * 100) / 100,
+        coste: Math.round(coste * 100) / 100,
+        pct: Math.round(((venta - coste) / venta) * 1000) / 1000,
+        sinCoste,
+        fecha: g.fecha,
+      };
+    }
+  }
+  return res;
+}
+
+/** Añade a cada oportunidad la fecha del presupuesto, el tiempo de respuesta y el margen. */
+export function completarOportunidades(ops: Oportunidad[], fechas: Record<string, Date>, margenes: Record<string, Margen>): void {
+  for (const o of ops) {
+    const m = margenes[o.codigo] || null;
+    o.margen = m;
+    const fp = fechas[o.codigo] || (m && m.fecha ? new Date(m.fecha) : null);
+    o.fechaPresupuesto = fp ? fp.toISOString() : null;
+    const fs = fecha(o.fechaSolicitud);
+    o.tiempoRespuesta = fs && fp && fp >= fs ? Math.round(((fp.getTime() - fs.getTime()) / DIA) * 10) / 10 : null;
+  }
+}
+
+// ───────── Análisis (Inicio y Análisis) ─────────
+
+export const ESTADOS_PRESUPUESTADO: string[] = [ESTADOS.HOLDED, ESTADOS.ENVIADO, ESTADOS.GANADO, ESTADOS.PERDIDO];
+export const ESTADOS_ENVIADO: string[] = [ESTADOS.ENVIADO, ESTADOS.GANADO, ESTADOS.PERDIDO];
+
+/** Solicitudes recibidas en los últimos `dias` días (0 = todas). */
+export function enPeriodo(ops: Oportunidad[], dias: number, ahora: Date): Oportunidad[] {
+  if (!dias) return ops;
+  const desde = ahora.getTime() - dias * DIA;
+  return ops.filter((o) => {
+    const d = fecha(o.fechaSolicitud);
+    return !!d && d.getTime() >= desde;
+  });
+}
+
+export interface Embudo {
+  solicitudes: Oportunidad[];
+  presupuestadas: Oportunidad[];
+  enviadas: Oportunidad[];
+  ganadas: Oportunidad[];
+  perdidas: Oportunidad[];
+}
+
+export function embudo(ops: Oportunidad[]): Embudo {
+  return {
+    solicitudes: ops,
+    presupuestadas: ops.filter((o) => ESTADOS_PRESUPUESTADO.includes(o.estado)),
+    enviadas: ops.filter((o) => ESTADOS_ENVIADO.includes(o.estado)),
+    ganadas: ops.filter((o) => o.estado === ESTADOS.GANADO),
+    perdidas: ops.filter((o) => o.estado === ESTADOS.PERDIDO),
+  };
+}
+
+export type Dimension = "tipo" | "comercial" | "marca" | "canal" | "provincia";
+
+export interface FilaConversion {
+  clave: string;
+  solicitudes: number;
+  presupuestadas: number;
+  enviadas: number;
+  ganadas: number;
+  perdidas: number;
+  ofertado: number;
+  ganado: number;
+}
+
+function clavesDe(o: Oportunidad, dim: Dimension): string[] {
+  if (dim === "comercial") return [nombreDeEmail(o.registradoPor)];
+  if (dim === "marca") return [o.marca || MARCA_PRINCIPAL];
+  if (dim === "canal") return [o.canal || "Sin dato"];
+  if (dim === "provincia") return [o.provincia || "Sin provincia"];
+  const p = normalizeStr(o.productos);
+  const tipos = TIPOS_PRODUCTO.filter((t) => p.includes(t.clave)).map((t) => t.nombre);
+  return tipos.length ? tipos : ["Sin clasificar"];
+}
+
+/** Conversión agrupada por tipo, comercial, marca, canal o provincia. */
+export function conversionPor(ops: Oportunidad[], dim: Dimension): FilaConversion[] {
+  const g: Record<string, FilaConversion> = {};
+  for (const o of ops) {
+    for (const k of clavesDe(o, dim)) {
+      const x = (g[k] ||= { clave: k, solicitudes: 0, presupuestadas: 0, enviadas: 0, ganadas: 0, perdidas: 0, ofertado: 0, ganado: 0 });
+      x.solicitudes++;
+      if (ESTADOS_PRESUPUESTADO.includes(o.estado)) {
+        x.presupuestadas++;
+        x.ofertado += o.importe || 0;
+      }
+      if (ESTADOS_ENVIADO.includes(o.estado)) x.enviadas++;
+      if (o.estado === ESTADOS.GANADO) {
+        x.ganadas++;
+        x.ganado += o.importe || 0;
+      }
+      if (o.estado === ESTADOS.PERDIDO) x.perdidas++;
+    }
+  }
+  return Object.values(g).sort((a, b) => b.solicitudes - a.solicitudes || b.ganado - a.ganado);
+}
+
+export function mediana(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Motivos de pérdida: { motivo → nº e importe }. Las perdidas sin motivo cuentan como "Sin indicar". */
+export function motivosPerdida(ops: Oportunidad[]): { motivo: string; n: number; importe: number }[] {
+  const g: Record<string, { motivo: string; n: number; importe: number }> = {};
+  for (const o of ops) {
+    if (o.estado !== ESTADOS.PERDIDO) continue;
+    const k = o.motivoPerdida || "Sin indicar";
+    const x = (g[k] ||= { motivo: k, n: 0, importe: 0 });
+    x.n++;
+    x.importe += o.importe || 0;
+  }
+  return Object.values(g).sort((a, b) => b.n - a.n);
 }

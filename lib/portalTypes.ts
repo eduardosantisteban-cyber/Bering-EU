@@ -16,4 +16,6 @@ export interface PortalData {
   sistema: Record<string, string | number | boolean | null>;
   errores: ErrorAutomatizacion[];
   enlaces: EnlacePortal[];
+  /** Avisos no bloqueantes (p. ej. márgenes no disponibles) */
+  avisos?: string[];
 }

@@ -213,3 +213,16 @@ export async function leerRangoOpcional(spreadsheetId: string, range: string): P
     throw err;
   }
 }
+
+/**
+ * Escribe valores en un rango (p. ej. "Solicitudes!W12"). Necesita que la hoja esté compartida
+ * como EDITOR con la cuenta de servicio (para leer basta con Lector).
+ */
+export async function escribirRango(spreadsheetId: string, range: string, values: unknown[][]): Promise<void> {
+  const token = await getAccessToken();
+  await googleFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    token,
+    { method: "PUT", body: JSON.stringify({ range, majorDimension: "ROWS", values }) }
+  );
+}

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { leerRangoOpcional, leerRangos, serviceAccountEmail } from "@/lib/googleSheets";
-import { parsearSolicitudes } from "@/lib/solicitudes";
+import { completarOportunidades, fechasPresupuesto, margenesDeOfertas, parsearSolicitudes, type LineaOferta, type Margen } from "@/lib/solicitudes";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { enlacesPortal, solicitudesSheetId } from "@/lib/portalConfig";
 import type { PortalData } from "@/lib/portalTypes";
 
 // Datos del portal: la tabla "Solicitudes" del Google Sheet de la automatización
-// (leída con la cuenta de servicio de Google) + las pestañas "Sistema" y "Errores"
-// que escribe el script en cada revisión. Solo lectura.
+// (leída con la cuenta de servicio de Google) + las pestañas "Sistema", "Errores" e
+// "Historial estados" que escribe el script, y el histórico de ofertas de Supabase
+// (tabla ofertas_bering) para los márgenes.
 
 const HOJA = "Solicitudes";
 
@@ -27,11 +29,20 @@ export async function GET() {
   }
 
   try {
-    const [valores] = await leerRangos(sheetId, [`${HOJA}!A2:V`]);
+    const avisos: string[] = [];
+    const [valores] = await leerRangos(sheetId, [`${HOJA}!A2:Y`]);
     const [formB, formO] = await leerRangos(sheetId, [`${HOJA}!B2:B`, `${HOJA}!O2:O`], "FORMULA");
-    const [sistema, errores] = await Promise.all([
+    const [sistema, errores, historial, margenes] = await Promise.all([
       leerRangoOpcional(sheetId, "Sistema!A1:B20"),
       leerRangoOpcional(sheetId, "Errores!A2:E201"),
+      leerRangoOpcional(sheetId, "'Historial estados'!A2:D").catch((e: Error) => {
+        avisos.push("Sin historial de estados (" + e.message.slice(0, 120) + "): el tiempo de respuesta se calcula solo con el histórico de ofertas.");
+        return [] as unknown[][];
+      }),
+      leerMargenes().catch((e: Error) => {
+        avisos.push("Márgenes no disponibles ahora mismo (" + e.message.slice(0, 120) + ").");
+        return {} as Record<string, Margen>;
+      }),
     ]);
 
     const oportunidades = parsearSolicitudes(
@@ -40,6 +51,7 @@ export async function GET() {
       formO.map((r) => r[0]),
       ahora
     );
+    completarOportunidades(oportunidades, fechasPresupuesto(historial as unknown[][]), margenes);
 
     const estado: Record<string, string | number | boolean | null> = {};
     for (const [k, v] of sistema as unknown[][]) {
@@ -63,6 +75,7 @@ export async function GET() {
         .reverse()
         .slice(0, 50),
       enlaces: enlacesPortal(),
+      avisos,
     };
     return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
@@ -79,4 +92,20 @@ export async function GET() {
       { status: 502 }
     );
   }
+}
+
+/** Líneas del histórico de ofertas (Supabase, tabla ofertas_bering) → margen por oportunidad. */
+async function leerMargenes(): Promise<Record<string, Margen>> {
+  const db = supabaseAdmin();
+  const lineas: LineaOferta[] = [];
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data, error } = await db
+      .from("ofertas_bering")
+      .select("codigo, numero, fecha, uds, precio_unit, coste_unit, descuento")
+      .range(desde, desde + 999);
+    if (error) throw new Error(error.message);
+    lineas.push(...((data || []) as LineaOferta[]));
+    if (!data || data.length < 1000) break;
+  }
+  return margenesDeOfertas(lineas);
 }

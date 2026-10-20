@@ -1,26 +1,37 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { PortalHeader } from "./components/PortalNav";
 import {
   Cargando,
   EnlacesOportunidad,
+  Embudo,
   ErrorDatos,
+  FichaOportunidad,
   GraficoMeses,
   Kpi,
+  MarcaBadge,
+  ProximosSeguimientos,
+  SelectorMarca,
+  SelectorPeriodo,
   SelectorPersona,
   TablaTipos,
   Tarjeta,
+  conIva,
+  dias1,
   eur,
   eurCorto,
   haceCuanto,
   personasDe,
+  textoPeriodo,
+  useMarca,
+  usePeriodo,
   usePersona,
   usePortalData,
 } from "./components/portal";
-import { indicadores, nombreDeEmail, ordenAtencion, porTipo, serieMensual } from "@/lib/solicitudes";
+import { embudo, enPeriodo, indicadores, mediana, nombreDeEmail, ordenAtencion, porTipo, serieMensual, type Oportunidad } from "@/lib/solicitudes";
 
 // Inicio del portal: cómo vamos, qué necesita atención, estado de las automatizaciones y accesos directos.
 
@@ -29,17 +40,29 @@ const MAX_ATENCION = 8;
 export default function InicioPage() {
   const { data, error, loading, refreshing, recargar } = usePortalData();
   const [persona, setPersona] = usePersona();
+  const [marca, setMarca] = useMarca();
+  const [periodo, setPeriodo] = usePeriodo();
+  const [ficha, setFicha] = useState<string | null>(null);
+  const cerrarFicha = useCallback(() => setFicha(null), []);
 
-  const todas = useMemo(() => data?.oportunidades ?? [], [data]);
-  const personas = useMemo(() => personasDe(todas), [todas]);
+  const todasMarcas = useMemo(() => data?.oportunidades ?? [], [data]);
+  const todas = useMemo(() => (marca ? todasMarcas.filter((o) => o.marca === marca) : todasMarcas), [todasMarcas, marca]);
+  const personas = useMemo(() => personasDe(todasMarcas), [todasMarcas]);
   const quien = personas.includes(persona) ? persona : "";
   const ops = useMemo(() => (quien ? todas.filter((o) => o.registradoPor === quien) : todas), [todas, quien]);
+  const abrir = useCallback((o: Oportunidad) => setFicha(o.codigo), []);
+  const fichaO = ficha ? todasMarcas.find((o) => o.codigo === ficha) || null : null;
   const ahora = useMemo(() => (data ? new Date(data.generado) : new Date()), [data]);
 
   const k = useMemo(() => indicadores(ops, ahora), [ops, ahora]);
   const meses = useMemo(() => serieMensual(ops, ahora, 6), [ops, ahora]);
   const tipos = useMemo(() => porTipo(ops), [ops]);
   const atencion = useMemo(() => ops.filter((o) => o.atencion).sort(ordenAtencion), [ops]);
+  const datosEmbudo = useMemo(() => embudo(enPeriodo(ops, periodo, ahora)), [ops, periodo, ahora]);
+  const respuesta = useMemo(() => {
+    const xs = enPeriodo(ops, 90, ahora).map((o) => o.tiempoRespuesta).filter((x): x is number => x !== null);
+    return { med: mediana(xs), n: xs.length };
+  }, [ops, ahora]);
 
   const sistema = data?.sistema ?? {};
   const ultima = typeof sistema["Última revisión"] === "string" ? (sistema["Última revisión"] as string) : null;
@@ -67,8 +90,16 @@ export default function InicioPage() {
               Oportunidades de la tabla Solicitudes{data ? ` · datos de ${haceCuanto(data.generado)}` : ""}
             </p>
           </div>
-          {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
+          <div className="flex flex-wrap items-center gap-3">
+            <SelectorMarca valor={marca} onChange={setMarca} />
+            {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
+          </div>
         </div>
+        {(data?.avisos ?? []).map((a) => (
+          <p key={a} className="mb-3 rounded-md bg-[#fff4e0] px-3 py-2 text-sm text-[#9a5b00]">
+            {a}
+          </p>
+        ))}
 
         {loading ? (
           <Cargando />
@@ -76,10 +107,12 @@ export default function InicioPage() {
           <ErrorDatos mensaje={error} onReintentar={recargar} />
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <div className="col-span-2 lg:col-span-1">
-                <Kpi label="Cartera abierta" valor={eurCorto(k.carteraAbierta)} sub={`${k.nAbiertas} en Holded o enviadas`} />
-              </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <Kpi
+                label="Cartera abierta"
+                valor={eurCorto(k.carteraAbierta)}
+                sub={`${k.nAbiertas} en Holded o enviadas · ${eurCorto(conIva(k.carteraAbierta) || 0)} IVA incl.`}
+              />
               <Kpi label="Enviados esperando" valor={String(k.enviados)} sub={eurCorto(k.enviadosImporte)} />
               <Kpi label="Por presupuestar" valor={String(k.porPresupuestar)} sub="pendientes, listos o con error" alerta={k.porPresupuestar > 0} />
               <Kpi label={`Ganado en ${ahora.getFullYear()}`} valor={eurCorto(k.ganadoAnio)} sub={`${k.nGanadosAnio} oportunidades`} />
@@ -87,6 +120,12 @@ export default function InicioPage() {
                 label="Tasa de cierre"
                 valor={k.tasaCierre90 === null ? "—" : Math.round(k.tasaCierre90 * 100) + "%"}
                 sub={`últimos 90 días · ${k.nCerrados90} cerradas`}
+              />
+              <Kpi
+                label="Respuesta (mediana)"
+                valor={dias1(respuesta.med)}
+                sub={`solicitud → presupuesto · 90 días · ${respuesta.n} presupuestos`}
+                alerta={respuesta.med !== null && respuesta.med > 3}
               />
             </div>
 
@@ -112,7 +151,10 @@ export default function InicioPage() {
                         <li key={o.codigo} className={`flex flex-wrap items-start gap-x-3 gap-y-1 py-2 ${llamar ? "-mx-2 rounded bg-[#fff4e0] px-2" : ""}`}>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm">
-                              <span className="font-semibold">{o.codigo}</span> · {o.empresa || "—"}
+                              <button type="button" onClick={() => abrir(o)} className="font-semibold underline decoration-[#e2e0dc] underline-offset-2 hover:decoration-[#282828]">
+                                {o.codigo}
+                              </button>
+                              <MarcaBadge marca={o.marca} /> · {o.empresa || "—"}
                               {!quien && o.registradoPor && <span className="text-xs text-[#8a8a8a]"> · {nombreDeEmail(o.registradoPor)}</span>}
                             </p>
                             <p className="text-sm font-medium text-[#282828]">{o.atencion}</p>
@@ -194,6 +236,25 @@ export default function InicioPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
+              <Tarjeta
+                titulo="Embudo comercial"
+                sub={`Solicitudes recibidas en ${textoPeriodo(periodo)} y hasta dónde han llegado. Importes: base imponible y con IVA.`}
+                accion={<SelectorPeriodo valor={periodo} onChange={setPeriodo} />}
+              >
+                <Embudo e={datosEmbudo} />
+                <Link href="/analisis" className="mt-2 inline-block text-xs font-medium text-[#e83038] hover:underline">
+                  Ver conversión, tiempos, motivos de pérdida y márgenes →
+                </Link>
+              </Tarjeta>
+              <Tarjeta
+                titulo={`Próximos seguimientos · ${ops.filter((o) => o.proximoSeguimiento).length}`}
+                sub="Emails automáticos y avisos de llamada de los presupuestos enviados (lunes a viernes, 9–18 h, desde la cuenta de quien lleva la oportunidad)."
+              >
+                <ProximosSeguimientos ops={ops} ahora={ahora} mostrarQuien={!quien} onAbrir={abrir} onCambio={recargar} />
+              </Tarjeta>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
               <Tarjeta titulo="Ofertado vs ganado" sub="Últimos 6 meses · base imponible. Ofertado por fecha de solicitud; ganado por fecha en que se ganó.">
                 <GraficoMeses meses={meses} />
               </Tarjeta>
@@ -204,6 +265,7 @@ export default function InicioPage() {
           </div>
         )}
       </main>
+      <FichaOportunidad o={fichaO} onCerrar={cerrarFicha} onCambio={recargar} />
     </div>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FileSpreadsheet, FileText, Loader2, Send } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, FileText, Loader2, Send, X } from "lucide-react";
 import type { PortalData } from "@/lib/portalTypes";
-import type { FilaTipo, Mes, Oportunidad } from "@/lib/solicitudes";
+import type { Embudo as DatosEmbudo, FilaTipo, Mes, Oportunidad } from "@/lib/solicitudes";
 import { nombreDeEmail } from "@/lib/solicitudes";
+import { IVA, MARCAS, MARCA_PRINCIPAL, MOTIVOS_PERDIDA } from "@/lib/portalConfig";
 
 // Piezas compartidas por Inicio, Oportunidades y Automatizaciones.
 
@@ -342,5 +343,473 @@ export function TablaTipos({ tipos }: { tipos: FilaTipo[] }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ── Filtros de marca y periodo (recordados en este navegador) ──
+
+export const PERIODOS = [
+  { dias: 90, nombre: "90 días" },
+  { dias: 365, nombre: "12 meses" },
+  { dias: 0, nombre: "Todo" },
+];
+export const NOMBRES_MARCA = [MARCA_PRINCIPAL, ...MARCAS.map((m) => m.nombre)];
+
+function useGuardado<T extends string | number>(clave: string, inicial: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(inicial);
+  useEffect(() => {
+    try {
+      const g = localStorage.getItem(clave);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- preferencia guardada en este navegador
+      if (g !== null) setV((typeof inicial === "number" ? Number(g) : g) as T);
+    } catch {
+      /* sin almacenamiento */
+    }
+  }, [clave, inicial]);
+  const set = (x: T) => {
+    setV(x);
+    try {
+      localStorage.setItem(clave, String(x));
+    } catch {
+      /* sin almacenamiento */
+    }
+  };
+  return [v, set];
+}
+
+/** Marca elegida ("" = todas). */
+export function useMarca() {
+  return useGuardado<string>("portal_marca", "");
+}
+/** Periodo de los análisis en días (0 = desde el inicio). */
+export function usePeriodo() {
+  return useGuardado<number>("portal_periodo", 365);
+}
+
+function Segmentado<T extends string | number>({
+  etiqueta,
+  opciones,
+  valor,
+  onChange,
+}: {
+  etiqueta: string;
+  opciones: { v: T; n: string }[];
+  valor: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm" role="group" aria-label={etiqueta}>
+      <span className="hidden text-[#606060] sm:inline">{etiqueta}</span>
+      <div className="inline-flex rounded-md border border-[#e2e0dc] bg-white p-0.5">
+        {opciones.map((o) => (
+          <button
+            key={String(o.v)}
+            type="button"
+            aria-pressed={valor === o.v}
+            onClick={() => onChange(o.v)}
+            className={`whitespace-nowrap rounded px-2.5 py-1 text-xs font-semibold ${
+              valor === o.v ? "bg-[#282828] text-white" : "text-[#606060] hover:text-[#282828]"
+            }`}
+          >
+            {o.n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SelectorMarca({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
+  return (
+    <Segmentado
+      etiqueta="Marca"
+      valor={valor}
+      onChange={onChange}
+      opciones={[{ v: "", n: "Todas" }, ...NOMBRES_MARCA.map((m) => ({ v: m, n: m }))]}
+    />
+  );
+}
+
+export function SelectorPeriodo({ valor, onChange }: { valor: number; onChange: (v: number) => void }) {
+  return <Segmentado etiqueta="Periodo" valor={valor} onChange={onChange} opciones={PERIODOS.map((p) => ({ v: p.dias, n: p.nombre }))} />;
+}
+
+export function textoPeriodo(dias: number): string {
+  return dias === 90 ? "últimos 90 días" : dias === 365 ? "últimos 12 meses" : "desde el inicio";
+}
+
+export function MarcaBadge({ marca }: { marca: string }) {
+  if (!marca || marca === MARCA_PRINCIPAL) return null;
+  return (
+    <span className="ml-1.5 inline-block rounded bg-[#e2f3f5] px-1.5 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-[#0f7c8c]">
+      {marca}
+    </span>
+  );
+}
+
+export const conIva = (v: number | null | undefined) => (v === null || v === undefined ? null : v * (1 + IVA));
+export const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) + "%" : "—");
+export const dias1 = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(Math.round(v * 10) / 10).replace(".", ",") + " d");
+
+// ── Acciones que escriben en la hoja ──
+
+export async function accionPortal(accion: "motivo" | "sinSeguimiento", codigo: string, valor: string | boolean): Promise<{ holded?: boolean }> {
+  const res = await fetch("/api/portal/accion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accion, codigo, valor }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error || `Error ${res.status}`);
+  return body || {};
+}
+
+export function SelectorMotivo({ o, onGuardado }: { o: Oportunidad; onGuardado: () => void }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <select
+        aria-label={`Motivo de pérdida de ${o.codigo}`}
+        disabled={guardando}
+        value={o.motivoPerdida}
+        onChange={async (e) => {
+          setGuardando(true);
+          setError("");
+          try {
+            await accionPortal("motivo", o.codigo, e.target.value);
+            onGuardado();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setGuardando(false);
+          }
+        }}
+        className="rounded-md border border-[#e2e0dc] bg-white px-2 py-1 text-sm outline-none focus:border-[#e83038] disabled:opacity-50"
+      >
+        <option value="">{o.motivoPerdida ? "Quitar motivo" : "Elegir motivo…"}</option>
+        {MOTIVOS_PERDIDA.map((m) => (
+          <option key={m}>{m}</option>
+        ))}
+      </select>
+      {error && <span className="max-w-xs text-xs text-[#b3161b]">{error}</span>}
+    </span>
+  );
+}
+
+export function BotonSeguimiento({ o, onGuardado, compacto }: { o: Oportunidad; onGuardado: () => void; compacto?: boolean }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+  const parar = !o.sinSeguimiento;
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={guardando}
+        onClick={async (e) => {
+          e.stopPropagation();
+          setGuardando(true);
+          setError("");
+          try {
+            await accionPortal("sinSeguimiento", o.codigo, parar);
+            onGuardado();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setGuardando(false);
+          }
+        }}
+        title={parar ? "No enviar más emails ni avisos a este cliente" : "Reactivar el seguimiento automático"}
+        className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-[#e2e0dc] bg-white px-2 py-1 text-xs font-medium text-[#606060] hover:border-[#606060] hover:text-[#282828] disabled:opacity-50"
+      >
+        {guardando && <Loader2 size={12} className="animate-spin" />}
+        {parar ? (compacto ? "Parar" : "Parar seguimiento") : compacto ? "Reactivar" : "Reactivar seguimiento"}
+      </button>
+      {error && <span className="max-w-xs text-right text-xs text-[#b3161b]">{error}</span>}
+    </span>
+  );
+}
+
+// ── Embudo comercial ──
+
+export function Embudo({ e }: { e: DatosEmbudo }) {
+  const total = e.solicitudes.length;
+  if (!total) return <p className="text-sm text-[#606060]">No hay solicitudes en este periodo.</p>;
+  const suma = (l: Oportunidad[]) => l.reduce((s, o) => s + (o.importe || 0), 0);
+  const pasos = [
+    { n: "Solicitudes", d: "recibidas", l: e.solicitudes, eu: false, color: "#282828" },
+    { n: "Presupuestadas", d: `${pct(e.presupuestadas.length, total)} de las solicitudes`, l: e.presupuestadas, eu: true, color: "#282828" },
+    { n: "Enviadas", d: `${pct(e.enviadas.length, e.presupuestadas.length)} de las presupuestadas`, l: e.enviadas, eu: true, color: "#282828" },
+    { n: "Ganadas", d: `${pct(e.ganadas.length, e.enviadas.length)} de las enviadas`, l: e.ganadas, eu: true, color: "#1e7e34" },
+  ];
+  return (
+    <div>
+      <div className="flex flex-col gap-2.5">
+        {pasos.map((p) => (
+          <div key={p.n} className="grid grid-cols-1 items-center gap-x-3 gap-y-1 sm:grid-cols-[130px_1fr_170px]">
+            <div>
+              <p className="text-sm font-semibold">{p.n}</p>
+              <p className="text-xs text-[#8a8a8a]">{p.d}</p>
+            </div>
+            <div className="h-7 overflow-hidden rounded bg-[#efefec]">
+              <div
+                className="flex h-full min-w-[32px] items-center rounded px-2 text-xs font-bold text-white"
+                style={{ width: `${Math.max(4, (100 * p.l.length) / total)}%`, background: p.color }}
+              >
+                {p.l.length}
+              </div>
+            </div>
+            <div className="text-xs tabular-nums sm:text-right">
+              {p.eu ? (
+                <>
+                  <span className="font-semibold text-[#282828]">{eur(suma(p.l))}</span> base
+                  <span className="block text-[#8a8a8a]">{eur(conIva(suma(p.l)))} IVA incl.</span>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-[#606060]">
+        Perdidas: <b>{e.perdidas.length}</b> · {eur(suma(e.perdidas))} base
+      </p>
+    </div>
+  );
+}
+
+// ── Próximos seguimientos ──
+
+export function ProximosSeguimientos({
+  ops,
+  ahora,
+  mostrarQuien,
+  onAbrir,
+  onCambio,
+}: {
+  ops: Oportunidad[];
+  ahora: Date;
+  mostrarQuien: boolean;
+  onAbrir: (o: Oportunidad) => void;
+  onCambio: () => void;
+}) {
+  const hoy = new Date(ahora);
+  hoy.setHours(0, 0, 0, 0);
+  const DIA = 86400000;
+  const l = ops.filter((o) => o.proximoSeguimiento).sort((a, b) => a.proximoSeguimiento!.fecha.localeCompare(b.proximoSeguimiento!.fecha));
+  const parados = ops.filter((o) => o.estado === "Presupuesto enviado" && o.sinSeguimiento);
+  if (!l.length && !parados.length) return <p className="text-sm text-[#606060]">No hay presupuestos enviados con seguimiento pendiente.</p>;
+  const t = (o: Oportunidad) => new Date(o.proximoSeguimiento!.fecha).getTime();
+  const grupos = [
+    { n: "Atrasados", rojo: true, l: l.filter((o) => t(o) < hoy.getTime()) },
+    { n: "Hoy", l: l.filter((o) => t(o) >= hoy.getTime() && t(o) < hoy.getTime() + DIA) },
+    { n: "Próximos 7 días", l: l.filter((o) => t(o) >= hoy.getTime() + DIA && t(o) < hoy.getTime() + 8 * DIA) },
+    { n: "Más adelante", l: l.filter((o) => t(o) >= hoy.getTime() + 8 * DIA) },
+  ].filter((g) => g.l.length);
+  return (
+    <div className="flex flex-col gap-3">
+      {grupos.map((g) => (
+        <div key={g.n}>
+          <p className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${g.rojo ? "text-[#b3161b]" : "text-[#8a8a8a]"}`}>
+            {g.n} · {g.l.length}
+          </p>
+          <ul className="divide-y divide-[#efefec]">
+            {g.l.slice(0, 12).map((o) => (
+              <li key={o.codigo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
+                <button type="button" onClick={() => onAbrir(o)} className="min-w-0 flex-1 text-left">
+                  <span className="text-sm font-semibold underline decoration-[#e2e0dc] underline-offset-2 hover:decoration-[#282828]">{o.codigo}</span>
+                  <MarcaBadge marca={o.marca} />
+                  <span className="text-sm"> · {o.empresa || "—"}</span>
+                  <span className="block text-xs text-[#606060]">
+                    {o.proximoSeguimiento!.nombre} · {fechaCorta(o.proximoSeguimiento!.fecha)}
+                    {mostrarQuien && o.registradoPor ? ` · ${nombreDeEmail(o.registradoPor)}` : ""}
+                  </span>
+                </button>
+                <BotonSeguimiento o={o} onGuardado={onCambio} compacto />
+              </li>
+            ))}
+          </ul>
+          {g.l.length > 12 && <p className="text-xs text-[#8a8a8a]">… y {g.l.length - 12} más</p>}
+        </div>
+      ))}
+      {parados.length > 0 && (
+        <p className="text-xs text-[#606060]">
+          Con «Sin seguimiento»:{" "}
+          {parados.slice(0, 10).map((o, i) => (
+            <span key={o.codigo}>
+              {i > 0 && ", "}
+              <button type="button" onClick={() => onAbrir(o)} className="font-semibold underline decoration-[#e2e0dc] underline-offset-2">
+                {o.codigo}
+              </button>
+            </span>
+          ))}
+          {parados.length > 10 ? ` y ${parados.length - 10} más` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Ficha de una oportunidad ──
+
+export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | null; onCerrar: () => void; onCambio: () => void }) {
+  useEffect(() => {
+    if (!o) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
+    window.addEventListener("keydown", esc);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", esc);
+      document.body.style.overflow = prev;
+    };
+  }, [o, onCerrar]);
+  if (!o) return null;
+  const fila = (t: string, v: React.ReactNode) =>
+    v ? (
+      <div className="grid grid-cols-1 gap-x-4 py-1 sm:grid-cols-[140px_1fr]">
+        <dt className="text-xs font-semibold text-[#8a8a8a]">{t}</dt>
+        <dd className="text-sm">{v}</dd>
+      </div>
+    ) : null;
+  const seg = (["1er email", "2º email", "Aviso llamada"] as const)
+    .map((n, i) => (o.seguimiento[i] ? `${n}: ${o.seguimiento[i]}` : ""))
+    .filter(Boolean);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ficha-titulo"
+      onClick={(e) => e.target === e.currentTarget && onCerrar()}
+    >
+      <div className="min-h-full w-full max-w-3xl bg-white shadow-2xl sm:min-h-0 sm:rounded-xl">
+        <div className="flex items-start gap-3 border-b border-[#e2e0dc] px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h2 id="ficha-titulo" className="text-lg font-bold">
+              {o.codigo}
+              <MarcaBadge marca={o.marca} />
+            </h2>
+            <p className="text-sm text-[#606060]">
+              {o.empresa || "—"}
+              {o.numero ? ` · ${o.numero}` : ""}
+            </p>
+          </div>
+          <EstadoPill estado={o.estado} />
+          <button type="button" onClick={onCerrar} className="rounded p-1 text-[#8a8a8a] hover:bg-[#f5f4f2] hover:text-[#282828]" aria-label="Cerrar">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <dl className="mb-3">
+            {fila(
+              "Contacto",
+              (o.contacto || o.email) && (
+                <>
+                  {o.contacto || "—"}
+                  {o.email && (
+                    <>
+                      {" · "}
+                      <a className="underline" href={`mailto:${o.email}`}>
+                        {o.email}
+                      </a>
+                    </>
+                  )}
+                </>
+              )
+            )}
+            {fila("Productos", o.productos)}
+            {fila("Cantidades", o.cantidades)}
+            {fila("Medidas", o.medidas)}
+            {fila("Provincia", o.provincia)}
+            {fila("Canal", o.canal)}
+            {fila("Asunto", o.asunto)}
+            {fila("Adjuntos", o.adjuntos)}
+            {fila("Solicitud", o.fechaSolicitud && fechaCorta(o.fechaSolicitud))}
+            {fila(
+              "Presupuesto",
+              o.fechaPresupuesto && (
+                <>
+                  {fechaCorta(o.fechaPresupuesto)}
+                  {o.tiempoRespuesta !== null && <span className="text-[#8a8a8a]"> ({dias1(o.tiempoRespuesta)} de respuesta)</span>}
+                </>
+              )
+            )}
+            {fila("Último estado", o.fechaEstado && fechaCorta(o.fechaEstado))}
+            {fila(
+              "Importe",
+              o.importe !== null && (
+                <>
+                  <b>{eur(o.importe)}</b> base · {eur(conIva(o.importe))} IVA incl.
+                </>
+              )
+            )}
+            {fila(
+              "Margen",
+              o.margen && (
+                <>
+                  {eur(o.margen.venta - o.margen.coste)} ({Math.round(o.margen.pct * 100)} %) · coste {eur(o.margen.coste)}
+                  {o.margen.sinCoste > 0 && <span className="text-[#b3161b]"> · {o.margen.sinCoste} líneas sin coste</span>}
+                </>
+              )
+            )}
+            {fila("Lleva", o.registradoPor && `${nombreDeEmail(o.registradoPor)} (${o.registradoPor})`)}
+            {fila(
+              "Seguimiento",
+              (o.sinSeguimiento || seg.length || o.proximoSeguimiento) && (
+                <>
+                  {o.sinSeguimiento && <b className="block">Sin seguimiento automático</b>}
+                  {seg.map((x) => (
+                    <span key={x} className="block">
+                      {x}
+                    </span>
+                  ))}
+                  {o.proximoSeguimiento && (
+                    <span className="block text-[#606060]">
+                      Próximo: {o.proximoSeguimiento.nombre} el {fechaCorta(o.proximoSeguimiento.fecha)}
+                    </span>
+                  )}
+                </>
+              )
+            )}
+            {fila("Motivo pérdida", o.estado === "Perdido" && <SelectorMotivo o={o} onGuardado={onCambio} />)}
+            {fila("Atención", o.atencion && <span className="font-semibold text-[#b3161b]">{o.atencion}</span>)}
+          </dl>
+          {o.resumen && <p className="mb-4 whitespace-pre-line rounded-md bg-[#f5f4f2] px-3 py-2 text-sm">{o.resumen}</p>}
+          <div className="flex flex-wrap items-center gap-2 border-t border-[#e2e0dc] pt-3">
+            <EnlacesOportunidad o={o} />
+            <a
+              href="https://app.holded.com/crm"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Oportunidades en Holded (busca ${o.codigo})`}
+              className="inline-flex items-center gap-1 rounded-md border border-[#e2e0dc] px-1.5 py-0.5 text-xs font-medium text-[#606060] hover:border-[#606060] hover:text-[#282828]"
+            >
+              <ExternalLink size={12} /> Holded
+            </a>
+            <span className="flex-1" />
+            {o.estado === "Presupuesto enviado" && <BotonSeguimiento o={o} onGuardado={onCambio} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Barras horizontales sencillas (canal, provincia, motivos, tramos). */
+export function Barras({ filas, color = "#282828" }: { filas: { k: string; n: number; detalle?: string; color?: string }[]; color?: string }) {
+  if (!filas.length) return <p className="text-sm text-[#606060]">Sin datos en este periodo.</p>;
+  const max = Math.max(1, ...filas.map((f) => f.n));
+  return (
+    <ul className="flex flex-col gap-2">
+      {filas.map((f) => (
+        <li key={f.k} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-sm sm:grid-cols-[minmax(110px,30%)_1fr_auto]">
+          <span className="truncate font-medium">{f.k}</span>
+          <span className="col-span-2 row-start-2 h-2.5 overflow-hidden rounded bg-[#efefec] sm:col-span-1 sm:row-start-auto">
+            <span className="block h-full rounded" style={{ width: `${(100 * f.n) / max}%`, background: f.color || color }} />
+          </span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-[#606060]">{f.detalle ?? f.n}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

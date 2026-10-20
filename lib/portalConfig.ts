@@ -16,6 +16,25 @@ export const AVISOS = {
   DIAS_PENDIENTE: 3, // sin presupuestar / sin enviar
 };
 
+/** Marcas de Bering EU con serie de numeración propia (igual que CONFIG.MARCAS del script). Sin prefijo propio = Bering EU. */
+export const MARCA_PRINCIPAL = "Bering EU";
+export const MARCAS: { nombre: string; prefijo: string }[] = [{ nombre: "Muelle Max", prefijo: "MMQ" }];
+
+/** Motivos de pérdida (mismos que MOTIVOS_PERDIDA del script). Se guardan en la columna W de Solicitudes. */
+export const MOTIVOS_PERDIDA = [
+  "Precio",
+  "Plazo de entrega",
+  "Eligió a la competencia",
+  "Proyecto cancelado o aplazado",
+  "Sin respuesta del cliente",
+  "No cumplimos lo técnico",
+  "Otro",
+];
+
+/** Margen sobre venta por debajo del cual se avisa (15 %). */
+export const MARGEN_OBJETIVO = 0.15;
+export const IVA = 0.21;
+
 // Tipos de producto tal y como los escribe el script en la columna "Productos"
 export const TIPOS_PRODUCTO: { clave: string; nombre: string }[] = [
   { clave: "muelle de carga", nombre: "Muelle de carga" },

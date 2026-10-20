@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search, X } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
 import {
@@ -8,12 +8,16 @@ import {
   EnlacesOportunidad,
   ErrorDatos,
   EstadoPill,
+  FichaOportunidad,
+  MarcaBadge,
   NOMBRES_ESTADO,
+  SelectorMarca,
   SelectorPersona,
   eur,
   fechaCorta,
   haceCuanto,
   personasDe,
+  useMarca,
   usePersona,
   usePortalData,
 } from "../components/portal";
@@ -32,6 +36,9 @@ export default function OportunidadesPage() {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("abiertas");
   const [limite, setLimite] = useState(PAGINA);
+  const [marca, setMarca] = useMarca();
+  const [ficha, setFicha] = useState<string | null>(null);
+  const cerrarFicha = useCallback(() => setFicha(null), []);
 
   // ?ver=atencion desde el Inicio
   useEffect(() => {
@@ -40,8 +47,10 @@ export default function OportunidadesPage() {
     if (ver) setFiltro(ver);
   }, []);
 
-  const todas = useMemo(() => data?.oportunidades ?? [], [data]);
-  const personas = useMemo(() => personasDe(todas), [todas]);
+  const todasMarcas = useMemo(() => data?.oportunidades ?? [], [data]);
+  const todas = useMemo(() => (marca ? todasMarcas.filter((o) => o.marca === marca) : todasMarcas), [todasMarcas, marca]);
+  const personas = useMemo(() => personasDe(todasMarcas), [todasMarcas]);
+  const fichaO = ficha ? todasMarcas.find((o) => o.codigo === ficha) || null : null;
   const quien = personas.includes(persona) ? persona : "";
   const dePersona = useMemo(() => (quien ? todas.filter((o) => o.registradoPor === quien) : todas), [todas, quien]);
 
@@ -56,7 +65,7 @@ export default function OportunidadesPage() {
     const l = dePersona.filter((o) => {
       if (t) {
         // Al buscar se mira en todas, también en las cerradas
-        return normalizeStr([o.codigo, o.numero, o.empresa, o.contacto, o.email, o.productos, o.asunto].join(" ")).includes(t);
+        return normalizeStr([o.codigo, o.numero, o.empresa, o.contacto, o.email, o.productos, o.asunto, o.provincia, o.canal, o.marca].join(" ")).includes(t);
       }
       return pasaFiltro(o, filtro);
     });
@@ -103,7 +112,10 @@ export default function OportunidadesPage() {
               {todas.length} en la tabla Solicitudes{data ? ` · datos de ${haceCuanto(data.generado)}` : ""}
             </p>
           </div>
-          {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
+          <div className="flex flex-wrap items-center gap-3">
+            <SelectorMarca valor={marca} onChange={setMarca} />
+            {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
+          </div>
         </div>
 
         {loading ? (
@@ -118,7 +130,7 @@ export default function OportunidadesPage() {
                 <input
                   id="buscar-oportunidad"
                   className="w-full rounded-md border border-[#e2e0dc] py-1.5 pl-8 pr-8 text-sm outline-none focus:border-[#e83038]"
-                  placeholder="Buscar por nº, empresa, contacto, email o producto"
+                  placeholder="Buscar por nº, empresa, contacto, email, producto o provincia"
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -159,7 +171,7 @@ export default function OportunidadesPage() {
                   </thead>
                   <tbody>
                     {lista.slice(0, limite).map((o) => (
-                      <Fila key={o.codigo + o.fechaSolicitud} o={o} mostrarQuien={!quien} />
+                      <Fila key={o.codigo + o.fechaSolicitud} o={o} mostrarQuien={!quien} onAbrir={() => setFicha(o.codigo)} />
                     ))}
                   </tbody>
                 </table>
@@ -178,6 +190,7 @@ export default function OportunidadesPage() {
           </section>
         )}
       </main>
+      <FichaOportunidad o={fichaO} onCerrar={cerrarFicha} onCambio={recargar} />
     </div>
   );
 }
@@ -189,18 +202,27 @@ function pasaFiltro(o: Oportunidad, f: Filtro): boolean {
   return o.estado === f;
 }
 
-function Fila({ o, mostrarQuien }: { o: Oportunidad; mostrarQuien: boolean }) {
+function Fila({ o, mostrarQuien, onAbrir }: { o: Oportunidad; mostrarQuien: boolean; onAbrir: () => void }) {
   const seg = o.seguimiento.filter(Boolean).slice(-1)[0];
   return (
-    <tr className={`border-b border-[#efefec] align-top ${/^Llamar/.test(o.atencion) ? "bg-[#fff4e0]" : ""}`}>
+    <tr
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest("a,button")) onAbrir();
+      }}
+      className={`cursor-pointer border-b border-[#efefec] align-top hover:bg-[#fafaf8] ${/^Llamar/.test(o.atencion) ? "bg-[#fff4e0]" : ""}`}
+    >
       <td className="px-2 py-2">
-        <span className="font-semibold">{o.codigo}</span>
+        <button type="button" onClick={onAbrir} className="font-semibold underline decoration-[#e2e0dc] underline-offset-2 hover:decoration-[#282828]">
+          {o.codigo}
+        </button>
+        <MarcaBadge marca={o.marca} />
         {o.numero && <span className="block text-xs text-[#8a8a8a]">{o.numero}</span>}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-xs text-[#606060]">{fechaCorta(o.fechaSolicitud)}</td>
       <td className="px-2 py-2">
         <span className="font-medium">{o.empresa || "—"}</span>
         {(o.contacto || o.email) && <span className="block text-xs text-[#8a8a8a]">{o.contacto || o.email}</span>}
+        {o.provincia && <span className="block text-xs text-[#8a8a8a]">{o.provincia}</span>}
       </td>
       <td className="px-2 py-2 text-xs">{o.productos || "—"}</td>
       <td className="px-2 py-2">
@@ -209,6 +231,8 @@ function Fila({ o, mostrarQuien }: { o: Oportunidad; mostrarQuien: boolean }) {
           <span className="mt-1 block text-xs font-medium text-[#b3161b]">{o.atencion}</span>
         ) : o.estado === "Presupuesto enviado" && (o.sinSeguimiento || seg) ? (
           <span className="mt-1 block text-xs text-[#8a8a8a]">{o.sinSeguimiento ? "Sin seguimiento" : seg}</span>
+        ) : o.estado === "Perdido" && o.motivoPerdida ? (
+          <span className="mt-1 block text-xs text-[#8a8a8a]">{o.motivoPerdida}</span>
         ) : null}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{eur(o.importe)}</td>
