@@ -9,15 +9,20 @@ import { JWT } from "google-auth-library";
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"];
 
 function getServiceAccount(): { client_email: string; private_key: string } {
-  const base64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64;
-  if (!base64) {
-    throw new Error("Falta GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 en las variables de entorno");
+  // Acepta el JSON de la clave en base64 (GOOGLE_SERVICE_ACCOUNT_JSON_BASE64) o pegado tal cual
+  // (GOOGLE_SERVICE_ACCOUNT_JSON, o el JSON sin codificar en la variable base64).
+  const raw = (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 || process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (!raw) {
+    throw new Error(
+      "Falta la clave de la cuenta de servicio de Google: añade GOOGLE_SERVICE_ACCOUNT_JSON (el contenido del archivo .json de la clave, " +
+        "pegado tal cual) en Vercel → Settings → Environment Variables, para Production y Preview"
+    );
   }
   let json: { client_email?: string; private_key?: string };
   try {
-    json = JSON.parse(Buffer.from(base64, "base64").toString("utf-8"));
+    json = JSON.parse(raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf-8"));
   } catch {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 no es un JSON en base64 válido");
+    throw new Error("La clave de la cuenta de servicio de Google no es un JSON válido (ni pegado tal cual ni en base64)");
   }
   if (!json.client_email || !json.private_key) {
     throw new Error("El JSON de la cuenta de servicio de Google no tiene client_email/private_key");
