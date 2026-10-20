@@ -27,8 +27,22 @@ export const TIPOS_PRODUCTO: { clave: string; nombre: string }[] = [
 
 /** ID del Google Sheet "Solicitudes" (el mismo HOJA_ID de las propiedades del script). */
 export function solicitudesSheetId(): string {
-  const id = (process.env.SOLICITUDES_SHEET_ID || "").trim();
-  if (!id) throw new Error("Falta SOLICITUDES_SHEET_ID en las variables de entorno");
+  // Tolera espacios o mayúsculas distintas en el nombre de la variable (fácil de colar al pegarla en Vercel)
+  const clave = Object.keys(process.env).find((k) => k.trim().toUpperCase() === "SOLICITUDES_SHEET_ID");
+  let id = (clave ? process.env[clave] || "" : "").trim();
+  // Si se pegó la URL entera de la hoja en vez del ID, se saca el ID
+  const m = id.match(/\/spreadsheets\/d\/([\w-]+)/);
+  if (m) id = m[1];
+  if (!id) {
+    const parecidas = Object.keys(process.env).filter((k) => /SOLICITUD|SHEET/i.test(k) && !/SERVICE_ACCOUNT/i.test(k));
+    throw new Error(
+      "Falta SOLICITUDES_SHEET_ID en las variables de entorno de este despliegue" +
+        ` (entorno: ${process.env.VERCEL_ENV || "desconocido"}, rama: ${process.env.VERCEL_GIT_COMMIT_REF || "desconocida"}).` +
+        (parecidas.length ? ` Variables con nombre parecido: ${parecidas.join(", ")}.` : " No hay ninguna variable con un nombre parecido.") +
+        (clave ? " La variable existe pero está vacía." : "") +
+        " En Vercel → Settings → Environment Variables, comprueba que está marcada para este entorno y vuelve a desplegar."
+    );
+  }
   return id;
 }
 
