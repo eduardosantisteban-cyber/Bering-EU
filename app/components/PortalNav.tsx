@@ -12,6 +12,7 @@ export const SECCIONES = [
   { href: "/", label: "Inicio" },
   { href: "/oportunidades", label: "Oportunidades" },
   { href: "/analisis", label: "Análisis" },
+  { href: "/productividad", label: "Productividad" },
   { href: "/proveedores", label: "Precios de proveedores" },
   { href: "/automatizaciones", label: "Automatizaciones" },
 ];
