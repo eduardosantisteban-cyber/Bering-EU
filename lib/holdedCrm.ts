@@ -14,7 +14,8 @@ export interface LeadHolded {
   name?: string;
   contactName?: string;
   value?: number | string;
-  status?: number; // 0 abierta · 1 ganada · 2 perdida
+  status?: number; // 0 abierta · 1 ganada · -1 perdida (en la API real; 2 por si acaso)
+  personName?: string;
   stageId?: string;
   tags?: string[];
   createdAt?: number | string;
@@ -38,7 +39,7 @@ function iso(v: unknown): string | null {
 /** Estado del portal a partir de la oportunidad de Holded (misma regla que estadoDesdeHolded_ del script). */
 export function estadoDeLead(lead: LeadHolded, etapas: Record<string, string>): string {
   if (lead.status === 1) return ESTADOS.GANADO;
-  if (lead.status === 2) return ESTADOS.PERDIDO;
+  if (lead.status === -1 || lead.status === 2) return ESTADOS.PERDIDO;
   const etapa = normalizeStr(etapas[lead.stageId || ""] || "");
   if (/ganad|won|aceptad/.test(etapa)) return ESTADOS.GANADO;
   if (/perdid|lost|rechazad|descartad/.test(etapa)) return ESTADOS.PERDIDO;
@@ -47,9 +48,9 @@ export function estadoDeLead(lead: LeadHolded, etapas: Record<string, string>): 
   return ESTADOS.PENDIENTE;
 }
 
-/** Tipos de producto a partir de los tags de Holded ("muelledecarga") o del "[…]" del título. */
-function productosDe(lead: LeadHolded): string {
-  const fuentes = [...(Array.isArray(lead.tags) ? lead.tags : []), ...(String(lead.name || "").match(/\[([^\]]+)\]/g) || [])];
+/** Tipos de producto a partir de los tags (de la oportunidad o de su contacto: "muelledecarga") o del "[…]" del título. */
+function productosDe(lead: LeadHolded, tagsContacto: string[] = []): string {
+  const fuentes = [...(Array.isArray(lead.tags) ? lead.tags : []), ...tagsContacto, ...(String(lead.name || "").match(/\[([^\]]+)\]/g) || [])];
   const texto = normalizeStr(fuentes.join(" ")).replace(/\s+/g, "");
   return TIPOS_PRODUCTO.filter((t) => t.clave !== "sin clasificar" && texto.includes(t.clave.replace(/\s+/g, "")))
     .map((t) => t.clave)
@@ -57,7 +58,12 @@ function productosDe(lead: LeadHolded): string {
 }
 
 /** Convierte las oportunidades de Holded que no están en la hoja en oportunidades del portal. */
-export function oportunidadesDeHolded(leads: LeadHolded[], etapas: Record<string, string>, codigosEnHoja: Set<string>): Oportunidad[] {
+export function oportunidadesDeHolded(
+  leads: LeadHolded[],
+  etapas: Record<string, string>,
+  codigosEnHoja: Set<string>,
+  tagsPorContacto: Record<string, string[]> = {}
+): Oportunidad[] {
   const out: Oportunidad[] = [];
   for (const l of leads) {
     const nombre = String(l.name || "").trim();
@@ -72,9 +78,9 @@ export function oportunidadesDeHolded(leads: LeadHolded[], etapas: Record<string
       codigo,
       numero: "",
       empresa: String(l.contactName || "").trim() || resto.split(/\s+[-–]\s+/)[0] || "—",
-      contacto: "",
+      contacto: String(l.personName || "").trim(),
       email: "",
-      productos: productosDe(l),
+      productos: productosDe(l, tagsPorContacto[String(l.contactId || "")] || []),
       asunto: resto.slice(0, 160),
       estado,
       fechaSolicitud,
@@ -113,11 +119,29 @@ async function holded(path: string, key: string): Promise<unknown> {
   return res.json();
 }
 
-/** Lee oportunidades y etapas de Holded. Devuelve null si no hay HOLDED_API_KEY. */
-export async function leerHistoricoHolded(): Promise<{ leads: LeadHolded[]; etapas: Record<string, string> } | null> {
+/** Tags de cada contacto (el script pone ahí los tipos de producto). Opcional: si falla, sin tags. */
+async function tagsDeContactos(key: string): Promise<Record<string, string[]>> {
+  const res: Record<string, string[]> = {};
+  try {
+    for (let page = 1; page <= 20; page++) {
+      const r = await fetch(`https://api.holded.com/api/invoicing/v1/contacts?page=${page}`, { headers: { key, accept: "application/json" }, cache: "no-store" });
+      if (!r.ok) break;
+      const l = (await r.json()) as { id?: string; tags?: string[] }[];
+      if (!Array.isArray(l) || !l.length) break;
+      for (const c of l) if (c.id && Array.isArray(c.tags) && c.tags.length) res[c.id] = c.tags.map(String);
+      if (l.length < 500) break;
+    }
+  } catch {
+    /* sin tags */
+  }
+  return res;
+}
+
+/** Lee oportunidades, etapas y tags de contactos de Holded. Devuelve null si no hay HOLDED_API_KEY. */
+export async function leerHistoricoHolded(): Promise<{ leads: LeadHolded[]; etapas: Record<string, string>; tagsPorContacto: Record<string, string[]> } | null> {
   const key = (process.env.HOLDED_API_KEY || "").trim();
   if (!key) return null;
-  const [leads, funnels] = await Promise.all([holded("/leads", key), holded("/funnels", key).catch(() => [])]);
+  const [leads, funnels, tagsPorContacto] = await Promise.all([holded("/leads", key), holded("/funnels", key).catch(() => []), tagsDeContactos(key)]);
   const etapas: Record<string, string> = {};
   for (const f of (Array.isArray(funnels) ? funnels : []) as { stages?: { stageId?: string; id?: string; key?: string; name?: string }[] }[]) {
     for (const s of f.stages || []) {
@@ -125,5 +149,5 @@ export async function leerHistoricoHolded(): Promise<{ leads: LeadHolded[]; etap
       if (id) etapas[id] = s.name || "";
     }
   }
-  return { leads: (Array.isArray(leads) ? leads : []) as LeadHolded[], etapas };
+  return { leads: (Array.isArray(leads) ? leads : []) as LeadHolded[], etapas, tagsPorContacto };
 }

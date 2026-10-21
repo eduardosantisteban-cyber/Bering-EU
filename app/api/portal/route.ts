@@ -20,15 +20,8 @@ function aIso(v: unknown): string | null {
   return null;
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   const ahora = new Date();
-  // Diagnóstico temporal: estructura (sin valores sensibles) de las oportunidades de Holded
-  if (new URL(req.url).searchParams.get("diag") === "holded") {
-    const crm = await leerHistoricoHolded().catch((e: Error) => ({ error: e.message }));
-    if (!crm || "error" in crm) return NextResponse.json(crm || { error: "sin clave" });
-    const muestra = crm.leads.filter((l) => /BEUQ30[37]|BEUQ320|BEUQ349/.test(String(l.name))).slice(0, 4);
-    return NextResponse.json({ etapas: crm.etapas, claves: Object.keys(crm.leads[0] || {}), muestra: muestra.map((l) => Object.fromEntries(Object.entries(l).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 80) : v]))) });
-  }
   let sheetId: string;
   try {
     sheetId = solicitudesSheetId();
@@ -67,7 +60,7 @@ export async function GET(req: Request) {
     // Histórico del CRM: oportunidades de Holded que no están en la hoja (anteriores a la automatización)
     if (crm) {
       const enHoja = new Set(oportunidades.map((o) => o.codigo.toUpperCase()));
-      oportunidades.push(...oportunidadesDeHolded(crm.leads, crm.etapas, enHoja));
+      oportunidades.push(...oportunidadesDeHolded(crm.leads, crm.etapas, enHoja, crm.tagsPorContacto));
     } else if (!process.env.HOLDED_API_KEY) {
       avisos.push("Falta HOLDED_API_KEY en Vercel: las oportunidades anteriores a la automatización (solo en Holded) no se incluyen.");
     }
