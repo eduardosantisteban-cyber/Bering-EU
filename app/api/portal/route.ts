@@ -20,8 +20,15 @@ function aIso(v: unknown): string | null {
   return null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const ahora = new Date();
+  // Diagnóstico temporal: estructura (sin valores sensibles) de las oportunidades de Holded
+  if (new URL(req.url).searchParams.get("diag") === "holded") {
+    const crm = await leerHistoricoHolded().catch((e: Error) => ({ error: e.message }));
+    if (!crm || "error" in crm) return NextResponse.json(crm || { error: "sin clave" });
+    const muestra = crm.leads.filter((l) => /BEUQ30[37]|BEUQ320|BEUQ349/.test(String(l.name))).slice(0, 4);
+    return NextResponse.json({ etapas: crm.etapas, claves: Object.keys(crm.leads[0] || {}), muestra: muestra.map((l) => Object.fromEntries(Object.entries(l).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 80) : v]))) });
+  }
   let sheetId: string;
   try {
     sheetId = solicitudesSheetId();
