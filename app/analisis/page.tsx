@@ -84,7 +84,8 @@ export default function AnalisisPage() {
   const provincias = useMemo(() => conversionPor(ops, "provincia"), [ops]);
   const tipos = useMemo(() => porTipo(ops), [ops]);
   const motivos = useMemo(() => motivosPerdida(ops), [ops]);
-  const sinMotivo = useMemo(() => ops.filter((o) => o.estado === ESTADOS.PERDIDO && !o.motivoPerdida), [ops]);
+  // Las del histórico del CRM no están en la hoja: su motivo no se puede guardar desde aquí
+  const sinMotivo = useMemo(() => ops.filter((o) => o.estado === ESTADOS.PERDIDO && !o.motivoPerdida && o.origen !== "crm"), [ops]);
 
   const tiempos = useMemo(() => {
     const l = ops.filter((o) => o.tiempoRespuesta !== null);

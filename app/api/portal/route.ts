@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { leerRangoOpcional, leerRangos, serviceAccountEmail } from "@/lib/googleSheets";
 import { completarOportunidades, fechasPresupuesto, margenesDeOfertas, parsearSolicitudes, type LineaOferta, type Margen } from "@/lib/solicitudes";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { leerHistoricoHolded, oportunidadesDeHolded } from "@/lib/holdedCrm";
 import { enlacesPortal, solicitudesSheetId } from "@/lib/portalConfig";
 import type { PortalData } from "@/lib/portalTypes";
 
@@ -32,7 +33,7 @@ export async function GET() {
     const avisos: string[] = [];
     const [valores] = await leerRangos(sheetId, [`${HOJA}!A2:Y`]);
     const [formB, formO] = await leerRangos(sheetId, [`${HOJA}!B2:B`, `${HOJA}!O2:O`], "FORMULA");
-    const [sistema, errores, historial, margenes] = await Promise.all([
+    const [sistema, errores, historial, margenes, crm] = await Promise.all([
       leerRangoOpcional(sheetId, "Sistema!A1:B20"),
       leerRangoOpcional(sheetId, "Errores!A2:E201"),
       leerRangoOpcional(sheetId, "'Historial estados'!A2:D").catch((e: Error) => {
@@ -43,6 +44,10 @@ export async function GET() {
         avisos.push("Márgenes no disponibles ahora mismo (" + e.message.slice(0, 120) + ").");
         return {} as Record<string, Margen>;
       }),
+      leerHistoricoHolded().catch((e: Error) => {
+        avisos.push("No se pudo leer el histórico de Holded (" + e.message.slice(0, 120) + "): solo se muestran las oportunidades de la hoja Solicitudes.");
+        return null;
+      }),
     ]);
 
     const oportunidades = parsearSolicitudes(
@@ -52,6 +57,13 @@ export async function GET() {
       ahora
     );
     completarOportunidades(oportunidades, fechasPresupuesto(historial as unknown[][]), margenes);
+    // Histórico del CRM: oportunidades de Holded que no están en la hoja (anteriores a la automatización)
+    if (crm) {
+      const enHoja = new Set(oportunidades.map((o) => o.codigo.toUpperCase()));
+      oportunidades.push(...oportunidadesDeHolded(crm.leads, crm.etapas, enHoja));
+    } else if (!process.env.HOLDED_API_KEY) {
+      avisos.push("Falta HOLDED_API_KEY en Vercel: las oportunidades anteriores a la automatización (solo en Holded) no se incluyen.");
+    }
 
     const estado: Record<string, string | number | boolean | null> = {};
     for (const [k, v] of sistema as unknown[][]) {

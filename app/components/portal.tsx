@@ -447,6 +447,18 @@ export function MarcaBadge({ marca }: { marca: string }) {
   );
 }
 
+export function OrigenBadge({ o }: { o: Pick<Oportunidad, "origen"> }) {
+  if (o.origen !== "crm") return null;
+  return (
+    <span
+      className="ml-1.5 inline-block rounded bg-[#f1f1ef] px-1.5 py-px align-middle text-[10px] font-bold uppercase tracking-wide text-[#8a8a8a]"
+      title="Solo está en Holded: anterior a la automatización (sin hoja de cálculo, emails ni seguimiento)"
+    >
+      CRM
+    </span>
+  );
+}
+
 export const conIva = (v: number | null | undefined) => (v === null || v === undefined ? null : v * (1 + IVA));
 export const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) + "%" : "—");
 export const dias1 = (v: number | null | undefined) => (v === null || v === undefined ? "—" : String(Math.round(v * 10) / 10).replace(".", ",") + " d");
@@ -596,7 +608,7 @@ export function ProximosSeguimientos({
   hoy.setHours(0, 0, 0, 0);
   const DIA = 86400000;
   const l = ops.filter((o) => o.proximoSeguimiento).sort((a, b) => a.proximoSeguimiento!.fecha.localeCompare(b.proximoSeguimiento!.fecha));
-  const parados = ops.filter((o) => o.estado === "Presupuesto enviado" && o.sinSeguimiento);
+  const parados = ops.filter((o) => o.estado === "Presupuesto enviado" && o.sinSeguimiento && o.origen !== "crm");
   if (!l.length && !parados.length) return <p className="text-sm text-[#606060]">No hay presupuestos enviados con seguimiento pendiente.</p>;
   const t = (o: Oportunidad) => new Date(o.proximoSeguimiento!.fecha).getTime();
   const grupos = [
@@ -688,6 +700,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
             <h2 id="ficha-titulo" className="text-lg font-bold">
               {o.codigo}
               <MarcaBadge marca={o.marca} />
+              <OrigenBadge o={o} />
             </h2>
             <p className="text-sm text-[#606060]">
               {o.empresa || "—"}
@@ -755,7 +768,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
             {fila("Lleva", o.registradoPor && `${nombreDeEmail(o.registradoPor)} (${o.registradoPor})`)}
             {fila(
               "Seguimiento",
-              (o.sinSeguimiento || seg.length || o.proximoSeguimiento) && (
+              o.origen !== "crm" && (o.sinSeguimiento || seg.length || o.proximoSeguimiento) && (
                 <>
                   {o.sinSeguimiento && <b className="block">Sin seguimiento automático</b>}
                   {seg.map((x) => (
@@ -771,10 +784,16 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
                 </>
               )
             )}
-            {fila("Motivo pérdida", o.estado === "Perdido" && <SelectorMotivo o={o} onGuardado={onCambio} />)}
+            {fila("Motivo pérdida", o.estado === "Perdido" && o.origen !== "crm" && <SelectorMotivo o={o} onGuardado={onCambio} />)}
             {fila("Atención", o.atencion && <span className="font-semibold text-[#b3161b]">{o.atencion}</span>)}
           </dl>
           {o.resumen && <p className="mb-4 whitespace-pre-line rounded-md bg-[#f5f4f2] px-3 py-2 text-sm">{o.resumen}</p>}
+          {o.origen === "crm" && (
+            <p className="mb-4 rounded-md bg-[#f5f4f2] px-3 py-2 text-xs text-[#606060]">
+              Oportunidad del histórico de Holded, anterior a la automatización: no tiene hoja de cálculo, emails registrados ni seguimiento automático.
+              Ábrela en Holded para ver el detalle.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 border-t border-[#e2e0dc] pt-3">
             <EnlacesOportunidad o={o} />
             <a
@@ -787,7 +806,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
               <ExternalLink size={12} /> Holded
             </a>
             <span className="flex-1" />
-            {o.estado === "Presupuesto enviado" && <BotonSeguimiento o={o} onGuardado={onCambio} />}
+            {o.estado === "Presupuesto enviado" && o.origen !== "crm" && <BotonSeguimiento o={o} onGuardado={onCambio} />}
           </div>
         </div>
       </div>

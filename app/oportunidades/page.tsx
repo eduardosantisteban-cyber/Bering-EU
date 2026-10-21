@@ -11,6 +11,7 @@ import {
   FichaOportunidad,
   MarcaBadge,
   NOMBRES_ESTADO,
+  OrigenBadge,
   SelectorMarca,
   SelectorPersona,
   eur,
@@ -216,6 +217,7 @@ function Fila({ o, mostrarQuien, onAbrir }: { o: Oportunidad; mostrarQuien: bool
           {o.codigo}
         </button>
         <MarcaBadge marca={o.marca} />
+        <OrigenBadge o={o} />
         {o.numero && <span className="block text-xs text-[#8a8a8a]">{o.numero}</span>}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-xs text-[#606060]">{fechaCorta(o.fechaSolicitud)}</td>
@@ -229,7 +231,7 @@ function Fila({ o, mostrarQuien, onAbrir }: { o: Oportunidad; mostrarQuien: bool
         <EstadoPill estado={o.estado} />
         {o.atencion ? (
           <span className="mt-1 block text-xs font-medium text-[#b3161b]">{o.atencion}</span>
-        ) : o.estado === "Presupuesto enviado" && (o.sinSeguimiento || seg) ? (
+        ) : o.estado === "Presupuesto enviado" && o.origen !== "crm" && (o.sinSeguimiento || seg) ? (
           <span className="mt-1 block text-xs text-[#8a8a8a]">{o.sinSeguimiento ? "Sin seguimiento" : seg}</span>
         ) : o.estado === "Perdido" && o.motivoPerdida ? (
           <span className="mt-1 block text-xs text-[#8a8a8a]">{o.motivoPerdida}</span>

@@ -66,6 +66,8 @@ export interface Oportunidad {
   tiempoRespuesta: number | null;
   margen: Margen | null;
   proximoSeguimiento: { nombre: string; fecha: string } | null;
+  /** "hoja" = tabla Solicitudes (con la automatización) · "crm" = solo en Holded (histórico anterior) */
+  origen: "hoja" | "crm";
 }
 
 export interface Margen {
@@ -226,6 +228,7 @@ export function parsearSolicitudes(
       tiempoRespuesta: null,
       margen: null,
       proximoSeguimiento: null,
+      origen: "hoja",
     };
     if (o.estado === ESTADOS.ENVIADO && !o.sinSeguimiento) o.proximoSeguimiento = proximoSeguimiento(fe, o.seguimiento);
     const a = motivoAtencion(o, ahora);
@@ -269,7 +272,8 @@ export function indicadores(ops: Oportunidad[], ahora: Date): Indicadores {
     nAbiertas: abiertas.length,
     enviados: enviados.length,
     enviadosImporte: suma(enviados),
-    porPresupuestar: ops.filter((o) => ESTADOS_SIN_PRESUPUESTO.includes(o.estado)).length,
+    // Las del histórico del CRM sin presupuesto suelen ser leads antiguos abandonados: no cuentan como trabajo pendiente
+    porPresupuestar: ops.filter((o) => ESTADOS_SIN_PRESUPUESTO.includes(o.estado) && o.origen !== "crm").length,
     ganadoAnio: suma(ganadosAnio),
     nGanadosAnio: ganadosAnio.length,
     tasaCierre90: cerrados90.length ? cerrados90.filter((o) => o.estado === ESTADOS.GANADO).length / cerrados90.length : null,
@@ -570,7 +574,7 @@ export function motivosPerdida(ops: Oportunidad[]): { motivo: string; n: number;
   const g: Record<string, { motivo: string; n: number; importe: number }> = {};
   for (const o of ops) {
     if (o.estado !== ESTADOS.PERDIDO) continue;
-    const k = o.motivoPerdida || "Sin indicar";
+    const k = o.motivoPerdida || (o.origen === "crm" ? "Histórico CRM (sin motivo)" : "Sin indicar");
     const x = (g[k] ||= { motivo: k, n: 0, importe: 0 });
     x.n++;
     x.importe += o.importe || 0;
