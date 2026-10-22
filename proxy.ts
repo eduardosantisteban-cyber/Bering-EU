@@ -4,7 +4,8 @@ import { isValidSessionToken, SESSION_COOKIE } from "@/lib/auth";
 // Puerta de acceso compartida: no hay login individual por persona,
 // solo una contraseña única del equipo. Protege todas las rutas
 // excepto /login y su propio endpoint de sesión.
-const PUBLIC_PATHS = ["/login", "/api/session"];
+// /api/voip (webhook de VoIPstudio) y /api/entradas/cola (script de Apps Script) llevan su propio token.
+const PUBLIC_PATHS = ["/login", "/api/session", "/api/voip", "/api/entradas/cola"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

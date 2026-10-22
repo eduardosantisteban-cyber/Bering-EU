@@ -6,11 +6,12 @@ import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { logout } from "@/lib/apiClient";
 
-// Navegación común del portal: Inicio · Oportunidades · Precios de proveedores · Automatizaciones.
+// Navegación común del portal: Inicio · Oportunidades · + Nueva · Análisis · Productividad · Precios de proveedores · Automatizaciones.
 
 export const SECCIONES = [
   { href: "/", label: "Inicio" },
   { href: "/oportunidades", label: "Oportunidades" },
+  { href: "/nueva", label: "+ Nueva" },
   { href: "/analisis", label: "Análisis" },
   { href: "/productividad", label: "Productividad" },
   { href: "/proveedores", label: "Precios de proveedores" },

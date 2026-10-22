@@ -151,3 +151,30 @@ export async function leerHistoricoHolded(): Promise<{ leads: LeadHolded[]; etap
   }
   return { leads: (Array.isArray(leads) ? leads : []) as LeadHolded[], etapas, tagsPorContacto };
 }
+
+/**
+ * Teléfonos de los contactos de Holded (empresa y personas de contacto) → nombre de la empresa.
+ * Clave = últimos 9 dígitos. Para saber si quien llama ya es cliente.
+ */
+export async function telefonosDeContactos(key: string): Promise<Record<string, string>> {
+  const res: Record<string, string> = {};
+  const clave = (s: unknown) => {
+    const d = String(s ?? "").replace(/\D/g, "");
+    return d.length >= 9 ? d.slice(-9) : "";
+  };
+  for (let page = 1; page <= 20; page++) {
+    const r = await fetch(`https://api.holded.com/api/invoicing/v1/contacts?page=${page}`, { headers: { key, accept: "application/json" }, cache: "no-store" });
+    if (!r.ok) throw new Error(`Holded ${r.status}`);
+    const l = (await r.json()) as { name?: string; phone?: string; mobile?: string; contactPersons?: { phone?: string; mobile?: string }[] }[];
+    if (!Array.isArray(l) || !l.length) break;
+    for (const c of l) {
+      const tels = [c.phone, c.mobile, ...(c.contactPersons || []).flatMap((p) => [p.phone, p.mobile])];
+      for (const t of tels) {
+        const k = clave(t);
+        if (k && !res[k]) res[k] = String(c.name || "").trim() || "Cliente";
+      }
+    }
+    if (l.length < 500) break;
+  }
+  return res;
+}
