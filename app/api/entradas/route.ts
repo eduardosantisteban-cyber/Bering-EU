@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { validarEntrada } from "@/lib/entradas";
+import { perdidasDuplicadas, validarEntrada, type LlamadaGuardada } from "@/lib/entradas";
 
 // Oportunidades registradas a mano en el portal (llamadas, WhatsApp…) y llamadas entrantes pendientes.
 //  GET  → últimas entradas (con su estado y código) + llamadas por registrar
@@ -31,7 +31,9 @@ export async function GET() {
     ]);
     if (entradas.error) throw new Error(entradas.error.message);
     if (llamadas.error) throw new Error(llamadas.error.message);
-    return NextResponse.json({ entradas: entradas.data || [], llamadas: llamadas.data || [] });
+    const lista = (llamadas.data || []) as (LlamadaGuardada & Record<string, unknown>)[];
+    const dup = new Set(perdidasDuplicadas(lista));
+    return NextResponse.json({ entradas: entradas.data || [], llamadas: lista.filter((l) => !dup.has(l.id)) });
   } catch (err) {
     return NextResponse.json({ error: faltaTabla((err as Error).message) }, { status: 500 });
   }

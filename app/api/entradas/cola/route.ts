@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { destinatariosDeDestino, leerMapaDestinos, perdidasDuplicadas, type LlamadaGuardada } from "@/lib/entradas";
 
 // Cola para el script de Apps Script (no usa la sesión del portal: se protege con ENTRADAS_TOKEN).
 //  GET ?usuario=email → reclama las entradas pendientes de ese comercial (las marca "procesando") y las
@@ -36,6 +37,16 @@ export async function GET(req: Request) {
     .select("id, creado, canal, registrado_por, empresa, contacto, email, telefono, nota, llamada_id");
   if (entradas.error) return NextResponse.json({ error: entradas.error.message }, { status: 500 });
 
+  // Una llamada llega en varios tramos (perdida en otra extensión, transferencia…): se avisa una sola vez
+  const recientes = await db
+    .from("llamadas_entrantes")
+    .select("id, creado, numero, perdida, duracion, estado")
+    .gte("creado", new Date(Date.now() - 60 * 60000).toISOString());
+  if (!recientes.error) {
+    const dup = perdidasDuplicadas((recientes.data || []) as LlamadaGuardada[]);
+    if (dup.length) await db.from("llamadas_entrantes").update({ estado: "duplicada" }).in("id", dup).in("estado", ["nueva", "cliente"]);
+  }
+
   const llamadas = await db
     .from("llamadas_entrantes")
     .update({ estado: "avisada" })
@@ -44,7 +55,15 @@ export async function GET(req: Request) {
     .select("id, creado, numero, destino, duracion, perdida");
   if (llamadas.error) return NextResponse.json({ error: llamadas.error.message }, { status: 500 });
 
-  return NextResponse.json({ entradas: entradas.data || [], llamadas: llamadas.data || [] });
+  // A quién enviar el aviso (número compartido → a todos los que lo comparten)
+  const mapa = leerMapaDestinos(process.env.VOIP_DESTINOS);
+  const porDefecto = process.env.VOIP_COMERCIAL || "eduardo.z@beringeu.es";
+  const conAvisar = (llamadas.data || []).map((l: { destino: string | null }) => ({
+    ...l,
+    avisar: destinatariosDeDestino(l.destino || "", mapa, porDefecto),
+  }));
+
+  return NextResponse.json({ entradas: entradas.data || [], llamadas: conAvisar });
 }
 
 export async function POST(req: Request) {

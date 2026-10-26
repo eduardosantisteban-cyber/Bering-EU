@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claveTelefono, comercialDeDestino, formatearTelefono, leerEventoVoip, leerMapaDestinos, llamadaRelevante, validarEntrada } from "./entradas";
+import { claveTelefono, destinatariosDeDestino, perdidasDuplicadas, comercialDeDestino, formatearTelefono, leerEventoVoip, leerMapaDestinos, llamadaRelevante, validarEntrada } from "./entradas";
 
 describe("entradas por llamada / WhatsApp", () => {
   it("valida el formulario", () => {
@@ -51,5 +51,23 @@ describe("entradas por llamada / WhatsApp", () => {
     expect(comercialDeDestino("0034910000001", mapa, "eduardo.z@beringeu.es")).toBe("manolo.ruiz@muellemax.com");
     expect(comercialDeDestino("101", mapa, "Eduardo.Z@beringeu.es")).toBe("eduardo.z@beringeu.es");
     expect(leerMapaDestinos("no json")).toEqual({});
+  });
+
+  it("no avisa dos veces de la misma llamada", () => {
+    const ls = [
+      { id: "a", creado: "2026-10-26T15:17:29Z", numero: "+34 601 015 894", perdida: true, duracion: 0 },
+      { id: "b", creado: "2026-10-26T15:17:30Z", numero: "+34 601 015 894", perdida: false, duracion: 16 },
+      { id: "c", creado: "2026-10-26T13:26:43Z", numero: "+34 919 895 589", perdida: true, duracion: 0 },
+      { id: "d", creado: "2026-10-26T13:26:45Z", numero: "+34 919 895 589", perdida: false, duracion: 22 },
+      { id: "e", creado: "2026-10-26T13:27:34Z", numero: "+34 919 895 589", perdida: false, duracion: 52 },
+      { id: "f", creado: "2026-10-26T10:00:00Z", numero: "+34 600 000 000", perdida: true, duracion: 0 },
+    ];
+    expect(perdidasDuplicadas(ls).sort()).toEqual(["a", "c", "d"]);
+  });
+
+  it("número compartido: avisa a todos", () => {
+    const mapa = leerMapaDestinos('{"34911233154":"belen.diaz@beringeu.es, manolo.ruiz@muellemax.com"}');
+    expect(destinatariosDeDestino("34911233154", mapa, "eduardo.z@beringeu.es")).toEqual(["belen.diaz@beringeu.es", "manolo.ruiz@muellemax.com"]);
+    expect(destinatariosDeDestino("101", mapa, "eduardo.z@beringeu.es")).toEqual(["eduardo.z@beringeu.es"]);
   });
 });

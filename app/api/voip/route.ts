@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { comercialDeDestino, formatearTelefono, claveTelefono, leerEventoVoip, leerMapaDestinos, llamadaRelevante } from "@/lib/entradas";
+import { destinatariosDeDestino, formatearTelefono, claveTelefono, leerEventoVoip, leerMapaDestinos, llamadaRelevante } from "@/lib/entradas";
 import { telefonosDeContactos } from "@/lib/holdedCrm";
 
 // Webhook de VoIPstudio (Integraciones → Webhooks): https://bering-eu.vercel.app/api/voip?token=…
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       destino: e.destino || null,
       duracion: e.duracion,
       perdida: e.perdida,
-      comercial: comercialDeDestino(e.destino, mapa, porDefecto),
+      comercial: destinatariosDeDestino(e.destino, mapa, porDefecto)[0],
       cliente,
       estado: cliente ? "cliente" : "nueva",
     };

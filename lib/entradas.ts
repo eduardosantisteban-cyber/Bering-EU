@@ -159,3 +159,42 @@ export function leerMapaDestinos(v: string | undefined): Record<string, string> 
     return {};
   }
 }
+
+// ── Llamadas duplicadas ──
+// VoIPstudio manda un evento por cada tramo de la llamada: una "perdida" por cada extensión que sonó sin
+// contestar (aunque otra la cogiera) y otro tramo si se transfiere. Para no avisar dos veces de lo mismo:
+
+export interface LlamadaGuardada {
+  id: string;
+  creado: string;
+  numero: string;
+  perdida: boolean;
+  duracion?: number | null;
+}
+
+/**
+ * Ids de los tramos sobrantes del mismo número en ±5 min: las "perdidas" si hubo una contestada, y de las
+ * contestadas se queda solo la más larga.
+ */
+export function perdidasDuplicadas(llamadas: LlamadaGuardada[], minutos = 5): string[] {
+  const ms = minutos * 60000;
+  const cerca = (a: LlamadaGuardada, b: LlamadaGuardada) =>
+    a.id !== b.id && claveTelefono(a.numero) === claveTelefono(b.numero) && Math.abs(new Date(a.creado).getTime() - new Date(b.creado).getTime()) <= ms;
+  const mejor = (a: LlamadaGuardada, b: LlamadaGuardada) =>
+    (b.duracion || 0) > (a.duracion || 0) || ((b.duracion || 0) === (a.duracion || 0) && b.id < a.id);
+  const contestadas = llamadas.filter((l) => !l.perdida);
+  return llamadas
+    .filter((l) => (l.perdida ? contestadas.some((c) => cerca(l, c)) : contestadas.some((c) => cerca(l, c) && mejor(l, c))))
+    .map((l) => l.id);
+}
+
+/**
+ * A quién avisar de una llamada según el número/extensión de destino. En VOIP_DESTINOS el valor puede ser una lista
+ * ("belen.diaz@beringeu.es, manolo.ruiz@muellemax.com") cuando varias personas comparten número: el primero recoge el
+ * aviso (su script lo envía) y el email va a todos.
+ */
+export function destinatariosDeDestino(destino: string, mapa: Record<string, string>, porDefecto: string): string[] {
+  const valor = comercialDeDestino(destino, mapa, porDefecto);
+  const lista = valor.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter((s) => /@/.test(s));
+  return lista.length ? [...new Set(lista)] : [porDefecto.toLowerCase()];
+}
