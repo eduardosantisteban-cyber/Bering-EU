@@ -16,6 +16,7 @@ import ComparadorModal from "../components/ComparadorModal";
 import CotizadorPanel, { type CartLine } from "../components/CotizadorPanel";
 import ChangelogModal from "../components/ChangelogModal";
 import { PortalTabs } from "../components/PortalNav";
+import { BotonTutorial, Tutorial } from "../components/Tutorial";
 import FichasTecnicasModal from "../components/FichasTecnicasModal";
 
 type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marca";
@@ -192,10 +193,12 @@ export default function ProveedoresPage() {
           <Button variant="primary" onClick={() => setUploadOpen(true)}>
             <Upload size={15} /> Subir presupuesto
           </Button>
+          <BotonTutorial />
           <button onClick={handleLogout} className="rounded p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label="Salir">
             <LogOut size={16} />
           </button>
         </div>
+        <Tutorial />
       </header>
 
       <div className="flex flex-1">
