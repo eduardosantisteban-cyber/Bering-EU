@@ -5,6 +5,7 @@ import { resumirTerminos, type FilaAds, type FilaTermino } from "@/lib/marketing
 //  GET ?dias=90 → filas diarias por campaña (gasto, clics, impresiones, conversiones, presupuesto diario)
 //                 de ese periodo y del anterior (para comparar), y los términos de búsqueda del periodo.
 // Necesita WINDSOR_API_KEY en Vercel (Windsor.ai → Settings → API key). Se cachea 1 hora.
+// Importes en la moneda de la cuenta (la de Bering se gestiona desde México: MXN) + tipo de cambio a EUR del BCE.
 
 const API = "https://connectors.windsor.ai/google_ads";
 
@@ -16,6 +17,18 @@ async function windsor(key: string, fields: string[], desde: string, hasta: stri
     throw new Error(`Windsor.ai ${res.status}: ${String(body?.error || body?.message || "respuesta no válida").slice(0, 200)}`);
   }
   return body.data;
+}
+
+/** Euros por unidad de la moneda de la cuenta (tipo del BCE vía frankfurter.app, cacheado 1 día). */
+async function tipoCambioEur(moneda: string): Promise<{ eur: number; fecha: string } | null> {
+  if (moneda === "EUR") return { eur: 1, fecha: "" };
+  try {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(moneda)}&to=EUR`, { next: { revalidate: 86400 } });
+    const b = (await res.json()) as { rates?: { EUR?: number }; date?: string };
+    return b.rates?.EUR ? { eur: b.rates.EUR, fecha: String(b.date || "") } : null;
+  } catch {
+    return null;
+  }
 }
 
 const n = (v: unknown) => {
@@ -37,10 +50,13 @@ export async function GET(req: Request) {
   const desde = new Date(hoy.getTime() - (dias - 1) * 86400000).toISOString().slice(0, 10);
   const desdeAnterior = new Date(hoy.getTime() - (2 * dias - 1) * 86400000).toISOString().slice(0, 10);
   try {
-    const [diario, terminos] = await Promise.all([
+    const [diario, terminos, monedaRows] = await Promise.all([
       windsor(key, ["date", "campaign", "campaign_status", "spend", "clicks", "impressions", "conversions", "budget_amount"], desdeAnterior, hasta),
       windsor(key, ["search_term", "campaign", "spend", "clicks", "impressions", "conversions"], desde, hasta).catch(() => []),
+      windsor(key, ["account_currency_code", "spend"], desde, hasta).catch(() => []),
     ]);
+    const moneda = String((monedaRows as Record<string, unknown>[])[0]?.account_currency_code || process.env.MARKETING_MONEDA || "MXN").toUpperCase();
+    const cambio = await tipoCambioEur(moneda);
     const filas: FilaAds[] = diario
       .map((r) => ({
         fecha: String(r.date || "").slice(0, 10),
@@ -62,7 +78,7 @@ export async function GET(req: Request) {
       conversiones: n(r.conversions),
     }));
     return NextResponse.json(
-      { desde, hasta, desdeAnterior, dias, filas, terminos: resumirTerminos(terms), generado: new Date().toISOString() },
+      { desde, hasta, desdeAnterior, dias, moneda, cambio, filas, terminos: resumirTerminos(terms), generado: new Date().toISOString() },
       { headers: { "Cache-Control": "private, max-age=300" } }
     );
   } catch (err) {
