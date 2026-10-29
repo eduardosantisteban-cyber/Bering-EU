@@ -57,7 +57,8 @@ export type Agrupacion = "dia" | "semana" | "mes";
 
 export interface Punto extends Totales {
   clave: string;
-  etiqueta: string;
+  etiqueta: string; // corta, para el eje ("sep", "26 oct")
+  etiquetaLarga: string; // sin ambigüedad, para el detalle ("Septiembre 2026", "Semana del 26 oct 2026")
 }
 
 /** Lunes de la semana de una fecha aaaa-mm-dd. */
@@ -68,6 +69,7 @@ export function lunes(fecha: string): string {
 }
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MESES_LARGOS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 export function serie(filas: FilaAds[], agrupacion: Agrupacion): Punto[] {
   const grupos = new Map<string, FilaAds[]>();
@@ -79,8 +81,15 @@ export function serie(filas: FilaAds[], agrupacion: Agrupacion): Punto[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([clave, rs]) => {
       const [y, m, d] = clave.split("-");
-      const etiqueta = agrupacion === "mes" ? `${MESES[Number(m) - 1]} ${y.slice(2)}` : `${Number(d)} ${MESES[Number(m) - 1]}`;
-      return { clave, etiqueta, ...totales(rs) };
+      const mes = Number(m) - 1;
+      const etiqueta = agrupacion === "mes" ? (mes === 0 ? `ene ${y}` : MESES[mes]) : `${Number(d)} ${MESES[mes]}`;
+      const etiquetaLarga =
+        agrupacion === "mes"
+          ? `${MESES_LARGOS[mes]} ${y}`
+          : agrupacion === "semana"
+            ? `Semana del ${Number(d)} ${MESES[mes]} ${y}`
+            : `${Number(d)} ${MESES[mes]} ${y}`;
+      return { clave, etiqueta, etiquetaLarga, ...totales(rs) };
     });
 }
 

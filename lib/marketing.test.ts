@@ -14,6 +14,8 @@ describe("marketing", () => {
   it("agrupa por semana y por campaña", () => {
     expect(lunes("2026-10-29")).toBe("2026-10-26");
     expect(serie(filas, "semana")).toHaveLength(1);
+    expect(serie(filas, "mes")[0].etiquetaLarga).toBe("Octubre 2026");
+    expect(serie(filas, "semana")[0].etiquetaLarga).toBe("Semana del 26 oct 2026");
     expect(serie(filas, "dia")).toHaveLength(2);
     const a = porCampana(filas).find((c) => c.campana === "A");
     expect(a?.usoPresupuesto).toBeCloseTo(1190 / 600);

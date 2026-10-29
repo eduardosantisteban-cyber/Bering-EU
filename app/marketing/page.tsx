@@ -408,9 +408,10 @@ function GraficoAlineado({ puntos, dinero }: { puntos: Punto[]; dinero: ReturnTy
       <div className="mb-2 min-h-[36px] rounded-md bg-[#f5f4f2] px-3 py-1.5 text-xs text-[#404040]">
         {p ? (
           <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-            <b className="text-[#282828]">{p.etiqueta}</b>
+            <b className="text-[#282828]">{p.etiquetaLarga}</b>
             <span>
-              Inversión <b>{dinero.fmt(p.gasto)}</b> de {dinero.fmt(p.presupuesto)}
+              Inversión <b>{dinero.fmt(p.gasto)}</b> de {dinero.fmt(p.presupuesto)} de presupuesto
+              {dinero.euros && dinero.moneda !== "EUR" ? <span className="text-[#8a8a8a]"> ({Math.round(p.gasto).toLocaleString("es-ES")} {dinero.moneda})</span> : null}
             </span>
             <span>
               Clics <b>{entero(p.clics)}</b>
