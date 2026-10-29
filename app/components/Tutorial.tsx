@@ -1,20 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ClipboardCheck, FileSearch, HelpCircle, Megaphone, PhoneCall, Settings2, Truck, Anchor, X, type LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Anchor, ClipboardCheck, FileSearch, HelpCircle, Megaphone, PhoneCall, Settings2, Smartphone, Tags, Truck, X, type LucideIcon } from "lucide-react";
 
-// Tutorial de bienvenida de Dársena: sale la primera vez que alguien entra (en ese navegador)
-// y se puede volver a abrir con el botón "?" de la cabecera.
+// Recorrido guiado de Dársena: sale la primera vez que alguien entra (en ese navegador) y se vuelve a abrir con
+// el botón "?" de la cabecera. Cada paso lleva a su sección, resalta su pestaña (o el menú en el móvil) y, si la
+// página tiene un elemento marcado con data-tour="…", lo resalta y lo centra en pantalla.
+// El paso en curso se guarda en sessionStorage para seguir el recorrido al cambiar de página.
 
-const CLAVE = "darsena_tutorial_v1";
+const CLAVE_VISTO = "darsena_tutorial_v2";
+const CLAVE_PASO = "darsena_tutorial_paso";
 const EVENTO = "darsena:tutorial";
+const CLASE_FOCO = "tour-foco";
 
 interface Paso {
   icono: LucideIcon;
   titulo: string;
   texto: string;
-  enlace?: { href: string; texto: string };
+  ruta?: string; // sección a la que lleva el paso
+  foco?: string; // data-tour del elemento de la página a resaltar
 }
 
 const PASOS: Paso[] = [
@@ -22,180 +27,260 @@ const PASOS: Paso[] = [
     icono: Anchor,
     titulo: "Bienvenido a Dársena",
     texto:
-      "Es el portal de Bering EU: aquí ves lo que hay que hacer hoy, todas las oportunidades, los proveedores, el marketing y las automatizaciones. Los datos salen solos de Gmail, Holded, la hoja Solicitudes y Google Ads. En un minuto te enseñamos lo básico.",
+      "Es el portal de Bering EU: lo que hay que hacer hoy, las oportunidades, los proveedores, el marketing y las automatizaciones, en un solo sitio. Los datos salen solos de Gmail, Holded, la hoja Solicitudes y Google Ads. Te llevamos sección por sección: es un minuto.",
   },
   {
     icono: ClipboardCheck,
     titulo: "Empieza el día en «Hoy»",
+    ruta: "/",
+    foco: "hoy",
     texto:
-      "En el Inicio, la bandeja Hoy junta todo lo que necesita a una persona: clientes a los que llamar o que han respondido, datos que faltan, peticiones a proveedores sin enviar o sin respuesta, llamadas sin registrar y presupuestos por hacer. Lo marcado «Hoy» es lo urgente. Elige tu nombre arriba para ver solo lo tuyo.",
-    enlace: { href: "/", texto: "Ir al Inicio" },
+      "Esta bandeja junta todo lo que necesita a una persona: clientes a los que llamar o que han respondido, datos que faltan, proveedores sin respuesta, llamadas sin registrar y presupuestos por hacer. Lo marcado «Hoy» es lo urgente. Elige tu nombre arriba a la derecha para ver solo lo tuyo.",
   },
   {
     icono: FileSearch,
-    titulo: "Cada oportunidad tiene su ficha",
+    titulo: "Oportunidades y su ficha",
+    ruta: "/oportunidades",
     texto:
-      "En Oportunidades buscas por cliente, código o estado. Al abrir una, pulsa «Ficha completa»: verás qué toca, su línea de tiempo (entrada, estados, proveedores, seguimientos) y las líneas del presupuesto con su margen, con enlaces al Sheet, al PDF y a Gmail.",
-    enlace: { href: "/oportunidades", texto: "Ver oportunidades" },
+      "Aquí buscas cualquier oportunidad por cliente, código o estado. Ábrela y pulsa «Ficha completa»: verás qué toca, su línea de tiempo (entrada, estados, proveedores, seguimientos) y las líneas del presupuesto con su margen.",
   },
   {
     icono: PhoneCall,
     titulo: "Llamadas y WhatsApp: + Nueva",
+    ruta: "/nueva",
     texto:
-      "Los emails se registran solos al etiquetarlos con «Presupuesto» en Gmail. Si la solicitud llega por teléfono o WhatsApp, regístrala en «+ Nueva»: en un minuto tendrás la oportunidad en Holded con su Sheet. Las llamadas de números nuevos aparecen ahí para registrarlas o descartarlas.",
-    enlace: { href: "/nueva", texto: "Abrir + Nueva" },
+      "Los emails entran solos al etiquetarlos con «Presupuesto» en Gmail. Si la solicitud llega por teléfono o WhatsApp, regístrala aquí: en un minuto tendrás la oportunidad en Holded con su Sheet. Las llamadas de números nuevos aparecen abajo para registrarlas o descartarlas.",
   },
   {
     icono: Truck,
-    titulo: "Proveedores y precios",
+    titulo: "Proveedores",
+    ruta: "/proveedores/panel",
     texto:
-      "En Proveedores ves cuánto tarda en responder cada uno y si es más caro o más barato que el resto, y editas la prioridad de marcas y los costes de instalación y transporte que usa la automatización. En Precios está la base de presupuestos de proveedores, el comparador y el cotizador.",
-    enlace: { href: "/proveedores/panel", texto: "Ver proveedores" },
+      "Cuánto tarda en responder cada proveedor y si es más caro o más barato que el resto. Más abajo editas la prioridad de marcas por tipo de producto y los costes de instalación y transporte que usa la automatización: lo que guardes aquí se aplica al siguiente presupuesto.",
+  },
+  {
+    icono: Tags,
+    titulo: "Precios",
+    ruta: "/proveedores",
+    texto:
+      "La base de presupuestos de proveedores: busca por tipo, marca, modelo o medidas, compara ofertas, consulta fichas técnicas y monta un presupuesto rápido con el cotizador. Sube aquí los PDF de proveedores que te lleguen por otra vía.",
   },
   {
     icono: Megaphone,
-    titulo: "Marketing y análisis",
+    titulo: "Marketing",
+    ruta: "/marketing",
     texto:
-      "Marketing muestra Google Ads: inversión frente a presupuesto, clics, impresiones, conversiones, campañas y términos de búsqueda, y cuánto cuesta cada solicitud que llega por la web. Análisis y Productividad enseñan la conversión, los tiempos de respuesta y los motivos de pérdida.",
-    enlace: { href: "/marketing", texto: "Ver marketing" },
+      "Google Ads al día: inversión frente a presupuesto, clics, impresiones y conversiones en el tiempo, cada campaña y los términos que buscó la gente (en rojo, los que gastan sin convertir). Arriba, el coste de cada solicitud que entra por la web. En Análisis y Productividad tienes conversión, tiempos y motivos de pérdida.",
   },
   {
     icono: Settings2,
-    titulo: "Las automatizaciones trabajan por ti",
+    titulo: "Automatizaciones",
+    ruta: "/automatizaciones",
     texto:
-      "Cada minuto revisan los emails etiquetados, crean presupuestos al marcar las casillas del Sheet, piden y leen precios de proveedores, recuerdan a los que no contestan y hacen el seguimiento a clientes. Nada se envía solo: siempre te dejan borradores. En Automatizaciones ves si todo funciona en tu cuenta.",
-    enlace: { href: "/automatizaciones", texto: "Ver automatizaciones" },
+      "Qué hace cada automatización y si funciona en la cuenta de cada persona. Cada minuto revisan los emails etiquetados, crean presupuestos al marcar las casillas del Sheet, piden y leen precios de proveedores y hacen el seguimiento a clientes. Nada se envía solo: siempre te dejan borradores.",
   },
   {
-    icono: Anchor,
-    titulo: "Listo",
+    icono: Smartphone,
+    titulo: "¡Listo!",
+    ruta: "/",
     texto:
-      "Desde el móvil también funciona: las secciones están en el menú ☰. Puedes volver a ver este tutorial cuando quieras con el botón «?» de la cabecera.",
+      "Desde el móvil funciona igual: las secciones están en el menú ☰. Puedes repetir este recorrido cuando quieras con el botón «?» de la cabecera.",
   },
 ];
 
-/** Botón "?" para volver a abrir el tutorial. */
+const leer = (store: "local" | "session", clave: string): string | null => {
+  try {
+    return (store === "local" ? localStorage : sessionStorage).getItem(clave);
+  } catch {
+    return null;
+  }
+};
+const guardar = (store: "local" | "session", clave: string, valor: string | null) => {
+  try {
+    const s = store === "local" ? localStorage : sessionStorage;
+    if (valor === null) s.removeItem(clave);
+    else s.setItem(clave, valor);
+  } catch {
+    /* sin almacenamiento */
+  }
+};
+
+/** Botón "?" para volver a hacer el recorrido. */
 export function BotonTutorial() {
   return (
     <button
       type="button"
       onClick={() => window.dispatchEvent(new Event(EVENTO))}
       className="rounded p-2 text-white/70 hover:bg-white/10 hover:text-white"
-      aria-label="Tutorial de Dársena"
-      title="Tutorial de Dársena"
+      aria-label="Recorrido por Dársena"
+      title="Recorrido por Dársena"
     >
       <HelpCircle size={17} />
     </button>
   );
 }
 
-/** Ventana del tutorial: se abre sola la primera vez y con el botón "?". */
-export function Tutorial() {
-  const [abierto, setAbierto] = useState(false);
-  const [paso, setPaso] = useState(0);
+/** Quita el resaltado de todos los elementos. */
+function limpiarFoco() {
+  document.querySelectorAll("." + CLASE_FOCO).forEach((el) => el.classList.remove(CLASE_FOCO));
+}
 
-  useEffect(() => {
-    let visto = true;
-    try {
-      visto = localStorage.getItem(CLAVE) === "1";
-    } catch {
-      visto = true; // sin almacenamiento (ventana privada…): no se insiste
+/** Resalta la pestaña de la sección (o el botón del menú si las pestañas no se ven) y el elemento de la página. */
+function resaltar(p: Paso) {
+  limpiarFoco();
+  if (p.ruta) {
+    const pestanas = Array.from(document.querySelectorAll<HTMLElement>(`[data-tour-nav="${p.ruta}"]`)).filter((el) => el.offsetParent !== null);
+    const destino = pestanas[0] || document.querySelector<HTMLElement>('[data-tour-nav="menu"]');
+    destino?.classList.add(CLASE_FOCO);
+  }
+  if (p.foco) {
+    const el = document.querySelector<HTMLElement>(`[data-tour="${p.foco}"]`);
+    if (el) {
+      el.classList.add(CLASE_FOCO);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- primera visita en este navegador
-    if (!visto) setAbierto(true);
+  }
+}
+
+/** Recorrido guiado. */
+export function Tutorial() {
+  const router = useRouter();
+  const pathname = usePathname() || "/";
+  const [paso, setPaso] = useState<number | null>(null);
+
+  // Al cargar la página: seguir el recorrido en curso o empezarlo si es la primera visita
+  useEffect(() => {
+    const enCurso = leer("session", CLAVE_PASO);
+    const n = enCurso === null ? NaN : Number(enCurso);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- estado del recorrido guardado en el navegador
+    if (!isNaN(n) && n >= 0 && n < PASOS.length) setPaso(n);
+    else if (leer("local", CLAVE_VISTO) !== "1" && leer("session", "darsena_tutorial_saltado") !== "1") setPaso(0);
     const abrir = () => {
+      guardar("session", CLAVE_PASO, "0");
       setPaso(0);
-      setAbierto(true);
     };
     window.addEventListener(EVENTO, abrir);
     return () => window.removeEventListener(EVENTO, abrir);
   }, []);
 
+  const terminar = useCallback(() => {
+    limpiarFoco();
+    guardar("session", CLAVE_PASO, null);
+    guardar("local", CLAVE_VISTO, "1");
+    guardar("session", "darsena_tutorial_saltado", "1");
+    setPaso(null);
+  }, []);
+
+  const ir = useCallback(
+    (n: number) => {
+      if (n < 0 || n >= PASOS.length) return;
+      guardar("session", CLAVE_PASO, String(n));
+      setPaso(n);
+      const ruta = PASOS[n].ruta;
+      if (ruta && ruta !== pathname) router.push(ruta);
+    },
+    [pathname, router]
+  );
+
+  // Resaltar al cambiar de paso (con un pequeño margen para que la página pinte su contenido)
   useEffect(() => {
-    if (!abierto) return;
+    if (paso === null) return;
+    const p = PASOS[paso];
+    if (p.ruta && p.ruta !== pathname) return; // se resaltará al llegar a la página
+    const t1 = setTimeout(() => resaltar(p), 150);
+    const t2 = setTimeout(() => resaltar(p), 1200); // por si la sección aún estaba cargando datos
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [paso, pathname]);
+
+  useEffect(() => {
+    if (paso === null) return;
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === "Escape") cerrar();
-      if (e.key === "ArrowRight") setPaso((p) => Math.min(PASOS.length - 1, p + 1));
-      if (e.key === "ArrowLeft") setPaso((p) => Math.max(0, p - 1));
+      if (e.key === "Escape") terminar();
+      if (e.key === "ArrowRight") ir(paso + 1);
+      if (e.key === "ArrowLeft") ir(paso - 1);
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [abierto]);
+  }, [paso, ir, terminar]);
 
-  function cerrar() {
-    setAbierto(false);
-    try {
-      localStorage.setItem(CLAVE, "1");
-    } catch {
-      /* sin almacenamiento */
-    }
-  }
+  useEffect(() => () => limpiarFoco(), []);
 
-  if (!abierto) return null;
+  if (paso === null) return null;
   const p = PASOS[paso];
   const Icono = p.icono;
   const ultimo = paso === PASOS.length - 1;
+  const portada = paso === 0;
 
-  return (
+  const tarjeta = (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-6"
+      className={`pointer-events-auto w-full bg-white shadow-2xl ring-1 ring-black/5 ${
+        portada ? "max-w-lg rounded-t-2xl sm:rounded-2xl" : "max-w-sm rounded-t-2xl sm:rounded-2xl"
+      }`}
       role="dialog"
-      aria-modal="true"
+      aria-modal={portada}
       aria-labelledby="tutorial-titulo"
-      onClick={(e) => e.target === e.currentTarget && cerrar()}
     >
-      <div className="w-full max-w-lg rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
-        <div className="flex items-center justify-between px-5 pt-4">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#8a8a8a]">
-            Dársena · {paso + 1} de {PASOS.length}
+      <div className="flex items-center justify-between px-5 pt-4">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#8a8a8a]">
+          Recorrido · {paso + 1} de {PASOS.length}
+        </span>
+        <button type="button" onClick={terminar} className="rounded p-1 text-[#8a8a8a] hover:bg-[#f5f4f2] hover:text-[#282828]" aria-label="Cerrar recorrido">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="px-5 pb-1 pt-2">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fdecec] text-[#e83038]" aria-hidden>
+            <Icono size={20} />
           </span>
-          <button type="button" onClick={cerrar} className="rounded p-1 text-[#8a8a8a] hover:bg-[#f5f4f2] hover:text-[#282828]" aria-label="Cerrar tutorial">
-            <X size={18} />
-          </button>
-        </div>
-        <div className="px-5 pb-2 pt-3">
-          <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#fdecec] text-[#e83038]" aria-hidden>
-            <Icono size={22} />
-          </span>
-          <h2 id="tutorial-titulo" className="text-lg font-bold text-[#282828]">
+          <h2 id="tutorial-titulo" className="text-lg font-bold leading-tight text-[#282828]">
             {p.titulo}
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-[#404040]">{p.texto}</p>
-          {p.enlace && (
-            <Link href={p.enlace.href} onClick={cerrar} className="mt-3 inline-block text-sm font-semibold text-[#e83038] hover:underline">
-              {p.enlace.texto} →
-            </Link>
-          )}
         </div>
-        <div className="flex items-center gap-1.5 px-5 pt-3" aria-hidden>
-          {PASOS.map((_, i) => (
-            <span key={i} className={`h-1.5 rounded-full transition-all ${i === paso ? "w-5 bg-[#e83038]" : "w-1.5 bg-[#e2e0dc]"}`} />
-          ))}
-        </div>
-        <div className="flex items-center justify-between gap-2 px-5 pb-5 pt-4">
-          <button type="button" onClick={cerrar} className="text-sm font-medium text-[#606060] hover:text-[#282828]">
-            {ultimo ? "" : "Saltar"}
-          </button>
-          <div className="flex gap-2">
-            {paso > 0 && (
-              <button
-                type="button"
-                onClick={() => setPaso(paso - 1)}
-                className="rounded-md border border-[#e2e0dc] px-3.5 py-2 text-sm font-medium text-[#282828] hover:border-[#606060]"
-              >
-                Atrás
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => (ultimo ? cerrar() : setPaso(paso + 1))}
-              className="rounded-md bg-[#282828] px-4 py-2 text-sm font-semibold text-white hover:bg-black"
-            >
-              {ultimo ? "Empezar" : paso === 0 ? "Empezar el recorrido" : "Siguiente"}
+        <p className="mt-3 text-sm leading-relaxed text-[#404040]">{p.texto}</p>
+      </div>
+      <div className="flex items-center gap-1.5 px-5 pt-3">
+        {PASOS.map((x, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => ir(i)}
+            aria-label={`Paso ${i + 1}: ${x.titulo}`}
+            className={`h-1.5 rounded-full transition-all ${i === paso ? "w-5 bg-[#e83038]" : "w-1.5 bg-[#e2e0dc] hover:bg-[#8a8a8a]"}`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 px-5 pb-5 pt-4">
+        <button type="button" onClick={terminar} className="text-sm font-medium text-[#606060] hover:text-[#282828]">
+          {ultimo ? "" : "Saltar"}
+        </button>
+        <div className="flex gap-2">
+          {paso > 0 && (
+            <button type="button" onClick={() => ir(paso - 1)} className="rounded-md border border-[#e2e0dc] px-3.5 py-2 text-sm font-medium text-[#282828] hover:border-[#606060]">
+              Atrás
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => (ultimo ? terminar() : ir(paso + 1))}
+            className="rounded-md bg-[#282828] px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+          >
+            {ultimo ? "Terminar" : portada ? "Empezar el recorrido →" : `Siguiente: ${PASOS[paso + 1].titulo.replace(/[«»¡!]/g, "")} →`}
+          </button>
         </div>
       </div>
     </div>
+  );
+
+  // Portada centrada con fondo oscuro; el resto, panel abajo a la derecha para ver la sección detrás
+  return portada ? (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-6" onClick={(e) => e.target === e.currentTarget && terminar()}>
+      {tarjeta}
+    </div>
+  ) : (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex justify-center sm:inset-x-auto sm:bottom-5 sm:right-5 sm:justify-end">{tarjeta}</div>
   );
 }

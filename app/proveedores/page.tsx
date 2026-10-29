@@ -198,8 +198,8 @@ export default function ProveedoresPage() {
             <LogOut size={16} />
           </button>
         </div>
-        <Tutorial />
       </header>
+      <Tutorial />
 
       <div className="flex flex-1">
         <Sidebar

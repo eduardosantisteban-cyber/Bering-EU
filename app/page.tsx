@@ -131,6 +131,7 @@ export default function InicioPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+              <div data-tour="hoy" className="min-w-0 rounded-lg">
               <Tarjeta
                 titulo="Hoy"
                 sub="Todo lo que necesita a una persona: llamadas, clientes que respondieron, datos que faltan, proveedores, presupuestos por hacer o enviar."
@@ -142,6 +143,7 @@ export default function InicioPage() {
               >
                 <BandejaHoy ops={ops} datos={hoy} ahora={ahora} quien={quien} onAbrir={(c) => setFicha(c)} />
               </Tarjeta>
+              </div>
 
               <div className="flex min-w-0 flex-col gap-4">
                 <Tarjeta

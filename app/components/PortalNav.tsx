@@ -48,6 +48,7 @@ export function PortalTabs({ vertical, onNavegar }: { vertical?: boolean; onNave
             key={s.href}
             href={s.href}
             onClick={onNavegar}
+            data-tour-nav={s.href}
             aria-current={es ? "page" : undefined}
             className={`whitespace-nowrap rounded-md px-3 font-medium transition ${vertical ? "py-2.5 text-base" : "py-1.5 text-sm"} ${
               es ? "bg-white text-[#282828]" : "text-white/75 hover:bg-white/10 hover:text-white"
@@ -73,6 +74,7 @@ export function PortalHeader({ children }: { children?: React.ReactNode }) {
     window.location.href = "/login";
   }
   return (
+    <>
     <header className="sticky top-0 z-30 bg-black">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label={`${NOMBRE_PORTAL} · Inicio`}>
@@ -86,6 +88,7 @@ export function PortalHeader({ children }: { children?: React.ReactNode }) {
           {children}
           <button
             onClick={() => setAbierto((v) => !v)}
+            data-tour-nav="menu"
             className="rounded p-2 text-white/80 hover:bg-white/10 hover:text-white lg:hidden"
             aria-label={abierto ? "Cerrar menú" : "Abrir menú"}
             aria-expanded={abierto}
@@ -108,7 +111,8 @@ export function PortalHeader({ children }: { children?: React.ReactNode }) {
           <PortalTabs vertical onNavegar={() => setAbierto(false)} />
         </div>
       )}
-      <Tutorial />
     </header>
+    <Tutorial />
+    </>
   );
 }
