@@ -170,6 +170,7 @@ export default function ProveedoresPage() {
       <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2 bg-black px-5 py-3">
         <div className="flex flex-wrap items-center gap-3">
           <Image src="/logo.jpg" alt="Bering EU" width={94} height={28} priority />
+          <span className="border-l border-white/25 pl-2.5 text-[15px] font-semibold tracking-wide text-white">Dársena</span>
           <button
             onClick={() => setChangelogOpen(true)}
             className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/80 hover:bg-white/20 hover:text-white"

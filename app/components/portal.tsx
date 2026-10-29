@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ExternalLink, FileSpreadsheet, FileText, Loader2, Send, X } from "lucide-react";
 import type { PortalData } from "@/lib/portalTypes";
 import type { Embudo as DatosEmbudo, FilaTipo, Mes, Oportunidad } from "@/lib/solicitudes";
@@ -786,6 +787,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
             )}
             {fila("Motivo pérdida", o.estado === "Perdido" && o.origen !== "crm" && <SelectorMotivo o={o} onGuardado={onCambio} />)}
             {fila("Atención", o.atencion && <span className="font-semibold text-[#b3161b]">{o.atencion}</span>)}
+            {fila("Faltan datos", o.faltanDatos && <span className="text-[#9a5b00]">{o.faltanDatos}</span>)}
           </dl>
           {o.resumen && <p className="mb-4 whitespace-pre-line rounded-md bg-[#f5f4f2] px-3 py-2 text-sm">{o.resumen}</p>}
           {o.origen === "crm" && (
@@ -807,6 +809,12 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
             </a>
             <span className="flex-1" />
             {o.estado === "Presupuesto enviado" && o.origen !== "crm" && <BotonSeguimiento o={o} onGuardado={onCambio} />}
+            <Link
+              href={`/oportunidades/${encodeURIComponent(o.codigo)}`}
+              className="inline-flex items-center gap-1 rounded-md bg-[#282828] px-2.5 py-1 text-xs font-semibold text-white hover:bg-black"
+            >
+              Ficha completa →
+            </Link>
           </div>
         </div>
       </div>

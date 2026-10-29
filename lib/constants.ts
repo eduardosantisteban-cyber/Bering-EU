@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "3.0.0";
+export const APP_VERSION = "4.0.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "4.0.0",
+    desc: "El portal pasa a llamarse Dársena. Nuevo: bandeja «Hoy» en el Inicio (todo lo que hay que hacer, de todas las fuentes), ficha completa de cada oportunidad con su línea de tiempo, sección Proveedores (rendimiento, prioridad y costes de instalación y transporte editables), sección Marketing (Google Ads: inversión, clics, impresiones, conversiones y presupuesto en el tiempo), Automatizaciones al día con el estado de cada cuenta y menú para móvil",
+  },
   {
     version: "3.0.0",
     desc: "Portal de Bering EU: nuevo Inicio con indicadores, oportunidades que necesitan atención, gráfico ofertado vs ganado, estado de las automatizaciones y accesos directos; sección Oportunidades (buscador de la tabla Solicitudes) y sección Automatizaciones. La base de precios pasa a «Precios de proveedores» (/proveedores)",

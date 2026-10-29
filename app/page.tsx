@@ -6,13 +6,11 @@ import { ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { PortalHeader } from "./components/PortalNav";
 import {
   Cargando,
-  EnlacesOportunidad,
   Embudo,
   ErrorDatos,
   FichaOportunidad,
   GraficoMeses,
   Kpi,
-  MarcaBadge,
   ProximosSeguimientos,
   SelectorMarca,
   SelectorPeriodo,
@@ -21,7 +19,6 @@ import {
   Tarjeta,
   conIva,
   dias1,
-  eur,
   eurCorto,
   haceCuanto,
   personasDe,
@@ -31,14 +28,18 @@ import {
   usePersona,
   usePortalData,
 } from "./components/portal";
-import { embudo, enPeriodo, indicadores, mediana, nombreDeEmail, ordenAtencion, porTipo, serieMensual, type Oportunidad } from "@/lib/solicitudes";
+import { embudo, enPeriodo, indicadores, mediana, porTipo, serieMensual, type Oportunidad } from "@/lib/solicitudes";
+import { BandejaHoy, useDatosHoy } from "./components/darsena";
 
-// Inicio del portal: cómo vamos, qué necesita atención, estado de las automatizaciones y accesos directos.
-
-const MAX_ATENCION = 8;
+// Inicio de Dársena: lo que hay que hacer hoy, cómo vamos, estado de las automatizaciones y accesos directos.
 
 export default function InicioPage() {
   const { data, error, loading, refreshing, recargar } = usePortalData();
+  const hoy = useDatosHoy();
+  const recargarTodo = useCallback(() => {
+    recargar();
+    hoy.recargar();
+  }, [recargar, hoy]);
   const [persona, setPersona] = usePersona();
   const [marca, setMarca] = useMarca();
   const [periodo, setPeriodo] = usePeriodo();
@@ -57,7 +58,6 @@ export default function InicioPage() {
   const k = useMemo(() => indicadores(ops, ahora), [ops, ahora]);
   const meses = useMemo(() => serieMensual(ops, ahora, 6), [ops, ahora]);
   const tipos = useMemo(() => porTipo(ops), [ops]);
-  const atencion = useMemo(() => ops.filter((o) => o.atencion).sort(ordenAtencion), [ops]);
   const datosEmbudo = useMemo(() => embudo(enPeriodo(ops, periodo, ahora)), [ops, periodo, ahora]);
   const respuesta = useMemo(() => {
     const xs = enPeriodo(ops, 90, ahora).map((o) => o.tiempoRespuesta).filter((x): x is number => x !== null);
@@ -67,14 +67,14 @@ export default function InicioPage() {
   const sistema = data?.sistema ?? {};
   const ultima = typeof sistema["Última revisión"] === "string" ? (sistema["Última revisión"] as string) : null;
   const minutos = ultima ? (ahora.getTime() - new Date(ultima).getTime()) / 60000 : null;
-  const automatizacionOk = minutos !== null && minutos < 30;
+  const automatizacionOk = minutos !== null && minutos < 15;
   const erroresRecientes = (data?.errores ?? []).filter((e) => ahora.getTime() - new Date(e.fecha).getTime() < 86400000).length;
 
   return (
     <div className="flex min-h-screen flex-col">
       <PortalHeader>
         <button
-          onClick={recargar}
+          onClick={recargarTodo}
           disabled={refreshing}
           className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10 disabled:opacity-50"
         >
@@ -85,9 +85,10 @@ export default function InicioPage() {
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-5 sm:px-5">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-[#282828]">Inicio</h1>
+            <h1 className="text-xl font-bold text-[#282828]">Hoy en Dársena</h1>
             <p className="text-sm text-[#606060]">
-              Oportunidades de la tabla Solicitudes{data ? ` · datos de ${haceCuanto(data.generado)}` : ""}
+              {ahora.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+              {data ? ` · datos de ${haceCuanto(data.generado)}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -131,46 +132,15 @@ export default function InicioPage() {
 
             <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
               <Tarjeta
-                titulo={`Necesitan atención · ${atencion.length}`}
-                sub="Lo que necesita a una persona. Lo que el seguimiento automático ya gestiona no aparece."
+                titulo="Hoy"
+                sub="Todo lo que necesita a una persona: llamadas, clientes que respondieron, datos que faltan, proveedores, presupuestos por hacer o enviar."
                 accion={
-                  atencion.length > MAX_ATENCION ? (
-                    <Link href="/oportunidades?ver=atencion" className="whitespace-nowrap text-xs font-medium text-[#e83038] hover:underline">
-                      Ver las {atencion.length}
-                    </Link>
-                  ) : null
+                  <Link href="/oportunidades?ver=atencion" className="whitespace-nowrap text-xs font-medium text-[#e83038] hover:underline">
+                    Oportunidades →
+                  </Link>
                 }
               >
-                {atencion.length === 0 ? (
-                  <p className="py-2 text-sm font-medium text-[#1e7e34]">Nada pendiente.</p>
-                ) : (
-                  <ul className="divide-y divide-[#efefec]">
-                    {atencion.slice(0, MAX_ATENCION).map((o) => {
-                      const llamar = /^Llamar/.test(o.atencion);
-                      return (
-                        <li key={o.codigo} className={`flex flex-wrap items-start gap-x-3 gap-y-1 py-2 ${llamar ? "-mx-2 rounded bg-[#fff4e0] px-2" : ""}`}>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm">
-                              <button type="button" onClick={() => abrir(o)} className="font-semibold underline decoration-[#e2e0dc] underline-offset-2 hover:decoration-[#282828]">
-                                {o.codigo}
-                              </button>
-                              <MarcaBadge marca={o.marca} /> · {o.empresa || "—"}
-                              {!quien && o.registradoPor && <span className="text-xs text-[#8a8a8a]"> · {nombreDeEmail(o.registradoPor)}</span>}
-                            </p>
-                            <p className="text-sm font-medium text-[#282828]">{o.atencion}</p>
-                          </div>
-                          <div className="text-right text-xs text-[#606060]">
-                            <p className="tabular-nums">{o.diasAtencion} días</p>
-                            <p className="tabular-nums">{eur(o.importe)}</p>
-                          </div>
-                          <div className="w-full">
-                            <EnlacesOportunidad o={o} />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                <BandejaHoy ops={ops} datos={hoy} ahora={ahora} quien={quien} onAbrir={(c) => setFicha(c)} />
               </Tarjeta>
 
               <div className="flex min-w-0 flex-col gap-4">

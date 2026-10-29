@@ -31,7 +31,7 @@ export async function GET() {
 
   try {
     const avisos: string[] = [];
-    const [valores] = await leerRangos(sheetId, [`${HOJA}!A2:Y`]);
+    const [valores] = await leerRangos(sheetId, [`${HOJA}!A2:Z`]);
     const [formB, formO] = await leerRangos(sheetId, [`${HOJA}!B2:B`, `${HOJA}!O2:O`], "FORMULA");
     const [sistema, errores, historial, margenes, crm] = await Promise.all([
       leerRangoOpcional(sheetId, "Sistema!A1:B20"),

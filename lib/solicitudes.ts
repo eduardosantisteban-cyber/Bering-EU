@@ -13,8 +13,9 @@ import { provinciaDeTexto } from "./provincias";
 //  O presupuesto Holded (HYPERLINK al PDF) · P fecha estado · Q importe (base)
 //  S seguimiento · T sin seguimiento (casilla) · U seguimiento 2 · V aviso llamada
 //  W motivo pérdida · X canal · Y provincia (las tres las crea el script desde el 20/10/2026)
+//  Z faltan datos (lo que falta pedir al cliente; DatosFaltantes.gs desde el 29/10/2026)
 
-export const COL = { MOTIVO_PERDIDA: 23, CANAL: 24, PROVINCIA: 25, SIN_SEGUIMIENTO: 20 } as const;
+export const COL = { MOTIVO_PERDIDA: 23, CANAL: 24, PROVINCIA: 25, SIN_SEGUIMIENTO: 20, FALTAN_DATOS: 26 } as const;
 
 export const ESTADOS = {
   PENDIENTE: "Pendiente presupuesto",
@@ -68,6 +69,8 @@ export interface Oportunidad {
   proximoSeguimiento: { nombre: string; fecha: string } | null;
   /** "hoja" = tabla Solicitudes (con la automatización) · "crm" = solo en Holded (histórico anterior) */
   origen: "hoja" | "crm";
+  /** Datos que faltan pedir al cliente (columna Z) */
+  faltanDatos?: string;
 }
 
 export interface Margen {
@@ -224,6 +227,7 @@ export function parsearSolicitudes(
       canal: txt(c(COL.CANAL), 40) || canalDeducido(codigo, txt(c(11), 160)),
       provincia: txt(c(COL.PROVINCIA), 40) || provinciaDeTexto([c(9), c(11), c(8)].map((x) => String(x ?? "")).join("\n")),
       motivoPerdida: txt(c(COL.MOTIVO_PERDIDA), 60),
+      faltanDatos: txt(c(COL.FALTAN_DATOS), 600),
       fechaPresupuesto: null,
       tiempoRespuesta: null,
       margen: null,

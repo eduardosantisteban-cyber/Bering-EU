@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Bering EU — Portal",
-  description: "Oportunidades, precios de proveedores y automatizaciones de Bering EU",
+  title: "Dársena · Bering EU",
+  description: "Dársena, el portal de Bering EU: lo que hay que hacer hoy, oportunidades, marketing, proveedores y automatizaciones",
 };
 
 export default function RootLayout({

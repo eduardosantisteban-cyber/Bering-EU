@@ -41,7 +41,7 @@ function LoginForm() {
         className="w-full max-w-sm rounded-xl border border-[#e2e0dc] bg-white p-8 shadow-sm"
       >
         <h1 className="mb-1 text-xl font-semibold text-[#282828]">
-          Bering EU — Presupuestos
+          Dársena · Bering EU
         </h1>
         <p className="mb-6 text-sm text-[#606060]">
           Introduce la contraseña del equipo para acceder.
