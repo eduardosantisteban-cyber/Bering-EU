@@ -83,6 +83,16 @@ export default function NuevaOportunidadPage() {
       llamada_id: p.get("llamada") || x.llamada_id,
       canal: p.get("canal") || x.canal,
     }));
+    // Si no hay comercial recordado, quien ha entrado con Google
+    if (!p.get("comercial") && !quien) {
+      fetch("/api/session", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((b) => {
+          const yo = b && typeof b.email === "string" ? b.email : "";
+          if (yo && COMERCIALES.some((c) => c.email === yo)) setF((x) => ({ ...x, registrado_por: x.registrado_por || yo }));
+        })
+        .catch(() => undefined);
+    }
     cargar();
   }, [cargar]);
 

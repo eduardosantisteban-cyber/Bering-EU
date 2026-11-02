@@ -16,8 +16,59 @@ export function createSessionToken(): string {
   return createHmac("sha256", getSecret()).update(MARKER).digest("hex");
 }
 
+// ── Sesión con usuario (Entrar con Google) ──
+// Token "u.<payload base64url>.<firma>": payload = { e: email, x: caducidad en ms }. Firmado con SESSION_SECRET.
+
+const DIAS_SESION = 30;
+
+function firmar(payload: string): string {
+  return createHmac("sha256", getSecret()).update("usuario:" + payload).digest("base64url");
+}
+
+export function createUserSessionToken(email: string): string {
+  const payload = Buffer.from(JSON.stringify({ e: email.toLowerCase(), x: Date.now() + DIAS_SESION * 86400000 })).toString("base64url");
+  return "u." + payload + "." + firmar(payload);
+}
+
+/** Email de la sesión (null si es la sesión de contraseña compartida o no es válida). */
+export function emailDeSesion(token: string | undefined | null): string | null {
+  if (!token || !token.startsWith("u.")) return null;
+  const [, payload, firma] = token.split(".");
+  if (!payload || !firma) return null;
+  const esperada = firmar(payload);
+  const a = Buffer.from(firma);
+  const b = Buffer.from(esperada);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const d = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { e?: string; x?: number };
+    if (!d.e || !d.x || d.x < Date.now()) return null;
+    return emailPermitido(d.e) ? d.e : null;   // si se le quita el acceso, deja de valer al momento
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿Puede entrar este email? DARSENA_ACCESO (Vercel): lista separada por comas de dominios ("@beringeu.es") y emails.
+ * Por defecto: el equipo de Bering EU, Manolo (Muelle Max) y Eduardo (Bering México).
+ */
+export function emailPermitido(email: string): boolean {
+  const e = String(email || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) return false;
+  const lista = (process.env.DARSENA_ACCESO || "@beringeu.es,manolo.ruiz@muellemax.com,eduardo.santisteban@bering.com.mx")
+    .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  return lista.some((x) => (x.startsWith("@") ? e.endsWith(x) : e === x));
+}
+
+/** ¿Se permite todavía la contraseña compartida? (DARSENA_CONTRASENA=0 en Vercel para quitarla) */
+export function contrasenaPermitida(): boolean {
+  return process.env.DARSENA_CONTRASENA !== "0";
+}
+
 export function isValidSessionToken(token: string | undefined | null): boolean {
   if (!token) return false;
+  if (token.startsWith("u.")) return emailDeSesion(token) !== null;
+  if (!contrasenaPermitida()) return false;
   const expected = createSessionToken();
   const a = Buffer.from(token);
   const b = Buffer.from(expected);

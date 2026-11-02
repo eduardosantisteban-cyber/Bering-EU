@@ -4,6 +4,7 @@ import { leerRangoOpcional, leerRangos } from "@/lib/googleSheets";
 import { leerPeticiones } from "@/lib/darsenaServer";
 import { solicitudesSheetId } from "@/lib/portalConfig";
 import { codigosEnTexto, recortarHistorial, SISTEMA_ASISTENTE, type MensajeChat } from "@/lib/asistente";
+import { emailDeSesion, SESSION_COOKIE } from "@/lib/auth";
 
 // Asistente de Dársena: POST { mensajes: [{rol, texto}], pagina } → { respuesta }.
 // Protegido por la sesión del portal (cualquiera del equipo). Usa ANTHROPIC_API_KEY (la misma que lee los PDF).
@@ -19,7 +20,7 @@ const COLUMNAS = ["Fecha email", "Nº", "Empresa", "Contacto", "Email", "Product
 const fechaSerie = (v: unknown) =>
   typeof v === "number" && v > 20000 && v < 80000 ? new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 16).replace("T", " ") : String(v ?? "");
 
-async function datosEnDirecto(texto: string): Promise<string> {
+async function datosEnDirecto(texto: string, yo: string | null): Promise<string> {
   const partes: string[] = [];
   const sheetId = solicitudesSheetId();
   const [sistema, errores] = await Promise.all([
@@ -29,6 +30,16 @@ async function datosEnDirecto(texto: string): Promise<string> {
   if (sistema.length) partes.push("ESTADO DEL SCRIPT:\n" + sistema.filter((r) => r?.[0]).map((r) => `${r[0]}: ${r[1] ?? ""}`).join("\n"));
   const ultimos = errores.filter((r) => r?.[0]).slice(-8).reverse();
   if (ultimos.length) partes.push("ÚLTIMOS ERRORES (más reciente primero):\n" + ultimos.map((r) => `${r[0]} · ${r[1]} · ${r[2]} · ${r[3]} · ${String(r[4]).slice(0, 220)}`).join("\n"));
+
+  // "¿Qué tengo pendiente?", "mis oportunidades"… → las oportunidades abiertas de quien pregunta
+  if (yo && /\b(mis|m[ií]as?|tengo|pendiente|me toca|llevo)\b/i.test(texto)) {
+    const [filas] = await leerRangos(sheetId, ["Solicitudes!A2:Z"]);
+    const mias = filas
+      .filter((r) => String(r?.[12] ?? "").toLowerCase() === yo && !/^(ganado|perdido)$/i.test(String(r?.[13] ?? "")))
+      .slice(-25)
+      .map((r) => `${r[1]} · ${r[2]} · ${r[13]} · ${r[16] ? Math.round(Number(r[16])) + " €" : "sin importe"} · desde ${fechaSerie(r[15] || r[0]).slice(0, 10)}${r[25] ? " · faltan datos: " + String(r[25]).slice(0, 120) : ""}`);
+    partes.push(`OPORTUNIDADES ABIERTAS DE ${yo} (${mias.length}):\n` + (mias.join("\n") || "ninguna"));
+  }
 
   const codigos = codigosEnTexto(texto);
   if (codigos.length) {
@@ -78,15 +89,18 @@ export async function POST(req: Request) {
   if (!mensajes.length || mensajes[mensajes.length - 1].rol !== "usuario") return NextResponse.json({ error: "Falta la pregunta" }, { status: 400 });
 
   // Datos en directo (si fallan, el asistente responde igual con lo que sabe)
+  const cookie = (req.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(SESSION_COOKIE + "="));
+  const yo = emailDeSesion(cookie ? decodeURIComponent(cookie.slice(SESSION_COOKIE.length + 1)) : null);
   let directo = "";
   try {
-    directo = await datosEnDirecto(mensajes.filter((m) => m.rol === "usuario").slice(-3).map((m) => m.texto).join("\n"));
+    directo = await datosEnDirecto(mensajes.filter((m) => m.rol === "usuario").slice(-3).map((m) => m.texto).join("\n"), yo);
   } catch (e) {
     directo = "(No se pudieron leer los datos en directo: " + (e as Error).message.slice(0, 120) + ")";
   }
   const sistema =
     SISTEMA_ASISTENTE +
     `\n\nHOY: ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })} · El usuario está en la página ${String(body.pagina || "/").slice(0, 60)} de Dársena.` +
+    (yo ? ` Quien pregunta es ${yo} (cuando diga «mis» o «yo» se refiere a sus oportunidades).` : " Ha entrado con la contraseña del equipo: no sabes quién es.") +
     (directo ? `\n\nDATOS EN DIRECTO:\n${directo}` : "");
 
   try {

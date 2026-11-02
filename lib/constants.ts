@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.1.0";
+export const APP_VERSION = "4.2.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "4.2.0",
+    desc: "Entrar con Google: cada persona entra con su cuenta de trabajo (lista de acceso DARSENA_ACCESO). Hoy muestra lo tuyo, las tareas guardan quién las marcó y el asistente sabe con quién habla. Tareas de Hoy marcables como hechas",
+  },
   {
     version: "4.1.0",
     desc: "Asistente de Dársena: botón abajo a la derecha en todas las secciones para preguntar dudas y problemas de la automatización; responde breve con el estado, los errores y los datos de la oportunidad que se cite. Recorrido guiado de bienvenida",

@@ -48,6 +48,9 @@ Holded
 Dársena (portal)
 - Inicio → «Hoy»: todo lo pendiente (llamar, cliente respondió, datos que faltan, proveedores, llamadas, presupuestar, enviar). El círculo a la izquierda de cada tarea la marca como hecha para todo el equipo (en llamadas = descartar); «Deshacer» la recupera. Si la tarea cambia (p. ej. otro recordatorio), vuelve a salir. Oportunidades → «Ficha completa»: línea de tiempo. Proveedores: rendimiento, prioridad y costes. Precios: base de presupuestos de proveedores, comparador, cotizador. Marketing: Google Ads (en MXN, botón EUR). Automatizaciones: estado del ciclo de cada cuenta y errores. Botón «?»: recorrido guiado.
 
+Acceso a Dársena
+- Se entra con «Entrar con Google» con la cuenta de trabajo. Si sale «no tiene acceso», Eduardo debe añadir el email en Vercel (variable DARSENA_ACCESO). La contraseña del equipo sigue valiendo durante la transición.
+
 Funcionamiento del script
 - Corre en Google Apps Script (proyecto «Gmail a Holded») en la cuenta de cada comercial, cada minuto (configurarCicloRapido en cada cuenta). Si en Automatizaciones una cuenta sale «parado», esa persona debe abrir el proyecto y ejecutar configurarCicloRapido.
 - Gemini (IA que lee emails y adjuntos) a veces responde 503: el script reintenta solo; si un email queda en error, volver a etiquetarlo.

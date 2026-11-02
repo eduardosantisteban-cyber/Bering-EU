@@ -42,17 +42,39 @@ export function usePortalData() {
   return { data, error, loading, refreshing, recargar: cargar };
 }
 
-/** Persona elegida ("" = todo el equipo), recordada en este navegador. */
+/** Email de quien ha entrado con Google (null con la contraseña del equipo). */
+let YO_: Promise<string | null> | null = null;
+export function leerYo(): Promise<string | null> {
+  if (!YO_) {
+    YO_ = fetch("/api/session", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((b) => (b && typeof b.email === "string" ? b.email : null))
+      .catch(() => null);
+  }
+  return YO_;
+}
+
+export function useYo(): string | null {
+  const [yo, setYo] = useState<string | null>(null);
+  useEffect(() => {
+    leerYo().then(setYo);
+  }, []);
+  return yo;
+}
+
+/** Persona elegida ("" = todo el equipo), recordada en este navegador. Si no hay preferencia, quien ha entrado. */
 export function usePersona(): [string, (p: string) => void] {
   const [persona, setPersonaState] = useState("");
   useEffect(() => {
+    let p: string | null = null;
     try {
-      const p = localStorage.getItem("portal_persona");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- preferencia guardada en este navegador
-      if (p) setPersonaState(p);
+      p = localStorage.getItem("portal_persona");
     } catch {
       /* sin almacenamiento */
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- preferencia guardada en este navegador
+    if (p !== null) setPersonaState(p);
+    else leerYo().then((yo) => yo && setPersonaState(yo));
   }, []);
   const setPersona = (p: string) => {
     setPersonaState(p);

@@ -6,6 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { logout } from "@/lib/apiClient";
+import { nombreDeEmail } from "@/lib/solicitudes";
+import { useYo } from "./portal";
 import { BotonTutorial, Tutorial } from "./Tutorial";
 import { Asistente } from "./Asistente";
 
@@ -66,6 +68,7 @@ export function PortalTabs({ vertical, onNavegar }: { vertical?: boolean; onNave
 export function PortalHeader({ children }: { children?: React.ReactNode }) {
   const [abierto, setAbierto] = useState(false);
   const pathname = usePathname();
+  const yo = useYo();
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cerrar el menú al cambiar de página
     setAbierto(false);
@@ -96,6 +99,11 @@ export function PortalHeader({ children }: { children?: React.ReactNode }) {
           >
             {abierto ? <X size={20} /> : <Menu size={20} />}
           </button>
+          {yo && (
+            <span className="hidden max-w-[140px] truncate rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/85 sm:inline" title={yo}>
+              {nombreDeEmail(yo)}
+            </span>
+          )}
           <BotonTutorial />
           <button
             onClick={handleLogout}
