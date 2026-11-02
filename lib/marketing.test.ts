@@ -33,3 +33,49 @@ describe("marketing", () => {
     expect(variacion(1, 0)).toBeNull();
   });
 });
+
+import { campanasDeProductos, canalDeAnuncios, primerDiaConCanal, ventasDeAnuncios } from "./marketing";
+
+describe("ventas que trae Google Ads", () => {
+  const camps = ["Muelles_Carga_Tráfico", "Puertas_Tráfico"];
+  it("canales y campañas", () => {
+    expect(canalDeAnuncios("Web (formulario)")).toBe(true);
+    expect(canalDeAnuncios("Email info@")).toBe(true);
+    expect(canalDeAnuncios("Llamada")).toBe(true);
+    expect(canalDeAnuncios("Email directo")).toBe(false);
+    expect(canalDeAnuncios("Muelle Max")).toBe(false);
+    expect(campanasDeProductos("Muelle de carga, Mantenimiento", camps)).toEqual(["Muelles_Carga_Tráfico"]);
+    expect(campanasDeProductos("Muelle de carga, Puerta seccional", camps)).toEqual(camps);
+    expect(campanasDeProductos("Sin clasificar", camps)).toEqual([]);
+  });
+  it("cruza oportunidades con gasto desde el primer día con canal", () => {
+    const ads = [
+      { fecha: "2026-10-01", campana: camps[0], estado: "ENABLED", gasto: 9999, clics: 1, impresiones: 1, conversiones: 9, presupuesto: 0 },
+      { fecha: "2026-10-20", campana: camps[0], estado: "ENABLED", gasto: 2000, clics: 1, impresiones: 1, conversiones: 4, presupuesto: 0 },
+      { fecha: "2026-10-20", campana: camps[1], estado: "ENABLED", gasto: 1000, clics: 1, impresiones: 1, conversiones: 2, presupuesto: 0 },
+    ];
+    const op = (codigo: string, canal: string, productos: string, estado: string, importe: number | null) => ({ codigo, empresa: codigo, canal, productos, estado, importe, fechaSolicitud: "2026-10-21T10:00:00Z" });
+    const ops = [
+      op("A", "Llamada", "Muelle de carga", "Ganado", 1000),
+      op("B", "Web (formulario)", "Muelle de carga, Puerta seccional", "Presupuesto enviado", 400),
+      op("C", "Email directo", "Puerta rapida", "Ganado", 99999),
+      op("D", "WhatsApp", "Sin clasificar", "Perdido", null),
+    ];
+    const v = ventasDeAnuncios(ops, ads, "2026-09-01", "2026-10-31", "2026-10-13", 0.05);
+    expect(v.desde).toBe("2026-10-13");
+    expect(v.ops.map((o) => o.codigo)).toEqual(["A", "B", "D"]);
+    expect(v.total).toMatchObject({ gasto: 3000, oportunidades: 3, ganadas: 1, ganado: 1000, presupuestado: 1400, perdidas: 1 });
+    expect(v.total.retorno).toBeCloseTo(1000 / 150);
+    const m = v.campanas.find((c) => c.campana === camps[0]);
+    expect(m).toMatchObject({ gasto: 2000, oportunidades: 1.5, ganadas: 1 });
+    expect(m?.costeOportunidad).toBeCloseTo(2000 / 1.5);
+    expect(v.campanas.find((c) => c.campana === "")?.oportunidades).toBe(1);
+  });
+  it("primer día con canal ignora el histórico del CRM", () => {
+    expect(primerDiaConCanal([
+      { canal: "CRM (antes de la automatización)", fechaSolicitud: "2025-01-01", origen: "crm" },
+      { canal: "Llamada", fechaSolicitud: "2026-10-26T00:00:00Z", origen: "hoja" },
+      { canal: "Web (formulario)", fechaSolicitud: "2026-10-13T00:00:00Z", origen: "hoja" },
+    ])).toBe("2026-10-13");
+  });
+});

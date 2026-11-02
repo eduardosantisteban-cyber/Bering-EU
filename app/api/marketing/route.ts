@@ -50,11 +50,19 @@ export async function GET(req: Request) {
   const desde = new Date(hoy.getTime() - (dias - 1) * 86400000).toISOString().slice(0, 10);
   const desdeAnterior = new Date(hoy.getTime() - (2 * dias - 1) * 86400000).toISOString().slice(0, 10);
   try {
-    const [diario, terminos, monedaRows] = await Promise.all([
+    const [diario, terminos, monedaRows, accionesRows] = await Promise.all([
       windsor(key, ["date", "campaign", "campaign_status", "spend", "clicks", "impressions", "conversions", "budget_amount"], desdeAnterior, hasta),
       windsor(key, ["search_term", "campaign", "spend", "clicks", "impressions", "conversions"], desde, hasta).catch(() => []),
       windsor(key, ["account_currency_code", "spend"], desde, hasta).catch(() => []),
+      windsor(key, ["campaign", "conversion_action_name", "conversions"], desde, hasta).catch(() => []),
     ]);
+    // Qué cuenta Google como conversión (clic en WhatsApp, en llamar, formulario…), sumado en el periodo
+    const accionesMapa = new Map<string, number>();
+    for (const r of accionesRows as Record<string, unknown>[]) {
+      const a = String(r.conversion_action_name || "").trim();
+      if (a) accionesMapa.set(a, (accionesMapa.get(a) || 0) + n(r.conversions));
+    }
+    const acciones = [...accionesMapa.entries()].map(([accion, conversiones]) => ({ accion, conversiones })).filter((x) => x.conversiones > 0).sort((a, b) => b.conversiones - a.conversiones);
     const moneda = String((monedaRows as Record<string, unknown>[])[0]?.account_currency_code || process.env.MARKETING_MONEDA || "MXN").toUpperCase();
     const cambio = await tipoCambioEur(moneda);
     const filas: FilaAds[] = diario
@@ -78,7 +86,7 @@ export async function GET(req: Request) {
       conversiones: n(r.conversions),
     }));
     return NextResponse.json(
-      { desde, hasta, desdeAnterior, dias, moneda, cambio, filas, terminos: resumirTerminos(terms), generado: new Date().toISOString() },
+      { desde, hasta, desdeAnterior, dias, moneda, cambio, filas, terminos: resumirTerminos(terms), acciones, generado: new Date().toISOString() },
       { headers: { "Cache-Control": "private, max-age=300" } }
     );
   } catch (err) {

@@ -137,3 +137,141 @@ export function variacion(actual: number | null, anterior: number | null): numbe
   if (actual === null || anterior === null || !anterior) return null;
   return actual / anterior - 1;
 }
+
+// ───────── Ventas que trae Google Ads (oportunidades reales cruzadas con las campañas) ─────────
+//
+// Google Ads cuenta como «conversión» un clic en WhatsApp o en llamar, no una oportunidad. Aquí se cuentan las
+// oportunidades reales de la hoja Solicitudes que llegan por canales que pueden venir de los anuncios (formulario
+// web, info@, llamadas, WhatsApp) y se asignan a la campaña de su producto (muelles → campaña de muelles,
+// puertas → campaña de puertas). Es una atribución por canal y producto, no exacta: no hay gclid.
+
+/** Canales que pueden venir de Google Ads. «Email directo» (clientes y licitaciones) y Muelle Max (otra web) no. */
+export function canalDeAnuncios(canal: string): boolean {
+  const c = canal.toLowerCase();
+  if (/directo|muelle ?max|crm|sin detalle/.test(c)) return false;
+  return /formulario|web|info@|llamada|whatsapp|google|ads/.test(c);
+}
+
+const sinAcentos = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Campañas que encajan con los productos pedidos (por el nombre de la campaña). */
+export function campanasDeProductos(productos: string, campanas: string[]): string[] {
+  const p = sinAcentos(productos);
+  const quiereMuelle = /muelle|rampa|abrigo|calzo|nivelad|plataforma/.test(p);
+  const quierePuerta = /puerta/.test(p);
+  return campanas.filter((c) => {
+    const n = sinAcentos(c);
+    return (quiereMuelle && /muelle|rampa|carga/.test(n)) || (quierePuerta && /puerta/.test(n));
+  });
+}
+
+export interface OpMarketing {
+  codigo: string;
+  empresa: string;
+  canal: string;
+  productos: string;
+  estado: string;
+  importe: number | null; // euros, base
+  fechaSolicitud: string | null; // ISO
+}
+
+export interface FilaVentas {
+  campana: string; // "" = sin campaña clara
+  gasto: number; // moneda de la cuenta
+  conversionesGoogle: number;
+  oportunidades: number; // puede ser fraccionario si una oportunidad pide productos de dos campañas
+  presupuestadas: number;
+  presupuestado: number; // €
+  ganadas: number;
+  ganado: number; // €
+  perdidas: number;
+  costeOportunidad: number | null; // moneda de la cuenta
+  costeVenta: number | null; // moneda de la cuenta
+  retorno: number | null; // ganado € ÷ gasto € (null sin tipo de cambio o sin gasto)
+}
+
+export interface Ventas {
+  /** Desde cuándo hay canal en las oportunidades (antes no se puede saber de dónde vinieron) */
+  desde: string;
+  hasta: string;
+  ops: (OpMarketing & { campanas: string[] })[];
+  campanas: FilaVentas[];
+  total: FilaVentas;
+}
+
+/**
+ * Cruza oportunidades y Google Ads en [desde, hasta], recortado al primer día con canal registrado (desdeCanal).
+ * eurPorUnidad: euros por unidad de la moneda de la cuenta (null si no hay tipo de cambio).
+ */
+export function ventasDeAnuncios(
+  ops: OpMarketing[],
+  filas: FilaAds[],
+  desde: string,
+  hasta: string,
+  desdeCanal: string | null,
+  eurPorUnidad: number | null
+): Ventas {
+  const inicio = desdeCanal && desdeCanal > desde ? desdeCanal : desde;
+  const ads = entre(filas, inicio, hasta);
+  const nombres = [...new Set(filas.map((f) => f.campana))].sort();
+  const elegidas = ops
+    .filter((o) => o.fechaSolicitud && o.fechaSolicitud.slice(0, 10) >= inicio && o.fechaSolicitud.slice(0, 10) <= hasta && canalDeAnuncios(o.canal))
+    .map((o) => ({ ...o, campanas: campanasDeProductos(o.productos, nombres) }))
+    .sort((a, b) => String(b.fechaSolicitud).localeCompare(String(a.fechaSolicitud)));
+
+  const vacia = (campana: string): FilaVentas => ({
+    campana, gasto: 0, conversionesGoogle: 0, oportunidades: 0, presupuestadas: 0, presupuestado: 0, ganadas: 0, ganado: 0, perdidas: 0,
+    costeOportunidad: null, costeVenta: null, retorno: null,
+  });
+  const filasV = new Map<string, FilaVentas>(nombres.map((n) => [n, vacia(n)]));
+  const total = vacia("Total");
+  for (const r of ads) {
+    const f = filasV.get(r.campana) as FilaVentas;
+    f.gasto += r.gasto;
+    f.conversionesGoogle += r.conversiones;
+    total.gasto += r.gasto;
+    total.conversionesGoogle += r.conversiones;
+  }
+  const sumar = (f: FilaVentas, o: OpMarketing, peso: number) => {
+    const imp = o.importe && o.importe > 0 ? o.importe : 0;
+    f.oportunidades += peso;
+    if (imp) {
+      f.presupuestadas += peso;
+      f.presupuestado += imp * peso;
+    }
+    if (/^ganado$/i.test(o.estado)) {
+      f.ganadas += peso;
+      f.ganado += imp * peso;
+    }
+    if (/^perdido$/i.test(o.estado)) f.perdidas += peso;
+  };
+  for (const o of elegidas) {
+    sumar(total, o, 1);
+    if (!o.campanas.length) {
+      if (!filasV.has("")) filasV.set("", vacia(""));
+      sumar(filasV.get("") as FilaVentas, o, 1);
+    } else for (const c of o.campanas) sumar(filasV.get(c) as FilaVentas, o, 1 / o.campanas.length);
+  }
+  const ratios = (f: FilaVentas): FilaVentas => ({
+    ...f,
+    costeOportunidad: f.campana && f.oportunidades ? f.gasto / f.oportunidades : null,
+    costeVenta: f.campana && f.ganadas ? f.gasto / f.ganadas : null,
+    retorno: f.campana && eurPorUnidad && f.gasto ? f.ganado / (f.gasto * eurPorUnidad) : null,
+  });
+  return {
+    desde: inicio,
+    hasta,
+    ops: elegidas,
+    campanas: [...filasV.values()].map(ratios).filter((f) => f.gasto || f.oportunidades),
+    total: ratios(total),
+  };
+}
+
+/** Primer día (aaaa-mm-dd) con canal registrado en las oportunidades de la hoja. */
+export function primerDiaConCanal(ops: { canal: string; fechaSolicitud: string | null; origen?: string }[]): string | null {
+  const fechas = ops
+    .filter((o) => o.origen !== "crm" && o.fechaSolicitud && o.canal && !/sin detalle|crm/i.test(o.canal))
+    .map((o) => String(o.fechaSolicitud).slice(0, 10))
+    .sort();
+  return fechas[0] || null;
+}

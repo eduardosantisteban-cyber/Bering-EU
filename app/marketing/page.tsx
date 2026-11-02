@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
 import { Cargando, ErrorDatos, Kpi, Tarjeta, eur, eurCorto, haceCuanto, usePortalData } from "../components/portal";
-import { entre, porCampana, serie, totales, variacion, type Agrupacion, type FilaAds, type FilaTermino, type Punto } from "@/lib/marketing";
-import { ESTADOS } from "@/lib/solicitudes";
+import {
+  entre, porCampana, primerDiaConCanal, serie, totales, variacion, ventasDeAnuncios,
+  type Agrupacion, type FilaAds, type FilaTermino, type Punto, type Ventas,
+} from "@/lib/marketing";
 
 // Marketing: Google Ads (inversión, presupuesto, clics, conversiones y coste por conversión en el tiempo) vía
 // Windsor.ai, cruzado con las solicitudes que llegan por la web (tabla Solicitudes).
@@ -21,6 +24,7 @@ interface DatosAds {
   cambio: { eur: number; fecha: string } | null;
   filas: FilaAds[];
   terminos: FilaTermino[];
+  acciones?: { accion: string; conversiones: number }[];
   generado: string;
 }
 
@@ -45,7 +49,7 @@ const vs = (v: number | null, invertir = false) => {
   const mejor = invertir ? v < 0 : v > 0;
   return `${v > 0 ? "+" : ""}${Math.round(v * 100)} % vs periodo anterior${Math.abs(v) >= 0.05 ? (mejor ? " ▲" : " ▼") : ""}`;
 };
-const esWeb = (canal: string) => /formulario|web|google|ads/i.test(canal);
+const fechaCorta = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 const corto = (v: number) => (v >= 1e6 ? dec1(v / 1e6) + "M" : v >= 1000 ? dec1(v / 1000) + "k" : String(Math.round(v)));
 
 /** Formato de dinero en la moneda elegida (la de la cuenta o euros). */
@@ -112,14 +116,11 @@ export default function MarketingPage() {
   const filasCampana = useMemo(() => (datos ? porCampana(entre(datos.filas, datos.desde, datos.hasta)) : []), [datos]);
   const terminos = datos?.terminos ?? [];
 
-  // Solicitudes que llegan por la web en el mismo periodo (tabla Solicitudes de Dársena; importes en euros)
-  const web = useMemo(() => {
+  // Oportunidades reales que pueden venir de los anuncios, cruzadas con la campaña de su producto (importes en euros)
+  const ventas = useMemo(() => {
     if (!datos || !portal.data) return null;
-    const ops = portal.data.oportunidades.filter(
-      (o) => o.origen === "hoja" && esWeb(o.canal) && o.fechaSolicitud && o.fechaSolicitud.slice(0, 10) >= datos.desde && o.fechaSolicitud.slice(0, 10) <= datos.hasta
-    );
-    const ganadas = ops.filter((o) => o.estado === ESTADOS.GANADO);
-    return { n: ops.length, ganadas: ganadas.length, ganado: ganadas.reduce((s, o) => s + (o.importe || 0), 0) };
+    const ops = portal.data.oportunidades.filter((o) => o.origen === "hoja");
+    return ventasDeAnuncios(ops, datos.filas, datos.desde, datos.hasta, primerDiaConCanal(ops), datos.cambio?.eur ?? null);
   }, [datos, portal.data]);
 
   const sobrePresupuesto = filasCampana.filter((c) => c.usoPresupuesto !== null && c.usoPresupuesto > 1.1);
@@ -225,9 +226,13 @@ export default function MarketingPage() {
               <Kpi label="CPC medio" valor={dinero.fmt(t.cpc, 2)} sub={vs(variacion(t.cpc, t0.cpc), true)} />
               <Kpi label="Impresiones · CTR" valor={entero(t.impresiones)} sub={`CTR ${pct1(t.ctr)} · ${vs(variacion(t.impresiones, t0.impresiones))}`} />
               <Kpi
-                label="Solicitudes por la web"
-                valor={web ? String(web.n) : "—"}
-                sub={web ? `${web.n ? dinero.fmt(t.gasto / web.n) + " por solicitud · " : ""}${web.ganadas} ganadas (${eurCorto(web.ganado)})` : "cargando Solicitudes…"}
+                label="Oportunidades reales"
+                valor={ventas ? dec1(ventas.total.oportunidades) : "—"}
+                sub={
+                  ventas
+                    ? `${ventas.total.costeOportunidad !== null ? dinero.fmt(ventas.total.costeOportunidad) + " por oportunidad · " : ""}${dec1(ventas.total.ganadas)} ganadas (${eurCorto(ventas.total.ganado)}) · desde ${fechaCorta(ventas.desde)}`
+                    : "cargando Solicitudes…"
+                }
               />
             </div>
 
@@ -239,6 +244,8 @@ export default function MarketingPage() {
                 . Google permite gastar hasta el doble algún día, pero si es habitual conviene revisar el presupuesto o las pujas.
               </p>
             )}
+
+            {ventas && <VentasAnuncios v={ventas} dinero={dinero} acciones={datos?.acciones ?? []} />}
 
             <Tarjeta
               titulo="Presupuesto, clics y conversiones"
@@ -526,5 +533,140 @@ function GraficoAlineado({ puntos, dinero }: { puntos: Punto[]; dinero: ReturnTy
       </svg>
       <p className="mt-1 text-xs text-[#8a8a8a]">Sin punto en «Coste por conversión» = periodo sin conversiones.</p>
     </div>
+  );
+}
+
+/**
+ * ¿Qué ventas trae Google Ads? Embudo de conversiones de Google → oportunidades reales → presupuestadas → ganadas,
+ * por campaña, con la lista de oportunidades. Atribución por canal y producto (no exacta).
+ */
+function VentasAnuncios({ v, dinero, acciones }: { v: Ventas; dinero: ReturnType<typeof useDinero>; acciones: { accion: string; conversiones: number }[] }) {
+  const t = v.total;
+  const sinCambio = dinero.moneda !== "EUR" && t.retorno === null && t.gasto > 0;
+  const gastoEur = dinero.moneda === "EUR" ? t.gasto : t.retorno !== null && t.ganado ? t.ganado / t.retorno : null;
+  const pasos = [
+    { n: dec1(t.conversionesGoogle), titulo: "Conversiones en Google", sub: "clics en WhatsApp, llamar, formulario…" },
+    { n: dec1(t.oportunidades), titulo: "Oportunidades reales", sub: t.costeOportunidad !== null ? dinero.fmt(t.costeOportunidad) + " cada una" : "" },
+    { n: dec1(t.presupuestadas), titulo: "Presupuestadas", sub: eurCorto(t.presupuestado) },
+    { n: dec1(t.ganadas), titulo: "Ganadas", sub: `${eurCorto(t.ganado)}${t.costeVenta !== null ? " · " + dinero.fmt(t.costeVenta) + " por venta" : ""}` },
+  ];
+  return (
+    <Tarjeta
+      titulo="¿Qué ventas trae Google Ads?"
+      sub={`Del ${fechaCorta(v.desde)} al ${fechaCorta(v.hasta)} (antes no se registraba el canal). Oportunidades que llegan por formulario web, info@, llamada o WhatsApp, asignadas a la campaña de su producto. «Email directo» y Muelle Max no cuentan. Es una estimación: Google no dice qué oportunidad viene de qué anuncio.`}
+    >
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        {pasos.map((p, i) => (
+          <div key={p.titulo} className="rounded-md border border-[#e2e0dc] px-3 py-2">
+            <p className="text-xs text-[#606060]">
+              {i ? "→ " : ""}
+              {p.titulo}
+            </p>
+            <p className="text-xl font-bold tabular-nums">{p.n}</p>
+            <p className="text-xs text-[#606060]">{p.sub || "\u00a0"}</p>
+          </div>
+        ))}
+        <div className={`rounded-md px-3 py-2 ${t.retorno === null ? "border border-[#e2e0dc]" : t.retorno >= 1 ? "bg-[#e6f4ea]" : "bg-[#fdecec]"}`}>
+          <p className="text-xs text-[#606060]">Retorno</p>
+          <p className="text-xl font-bold tabular-nums">{t.retorno === null ? "—" : dec1(t.retorno) + " ×"}</p>
+          <p className="text-xs text-[#606060]">
+            {t.retorno !== null
+              ? `${eurCorto(t.ganado)} ganados por ${gastoEur !== null ? eurCorto(gastoEur) : dinero.fmt(t.gasto)} invertidos`
+              : sinCambio
+                ? "sin tipo de cambio"
+                : "sin ventas o sin gasto aún"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead className="text-left text-xs text-[#606060]">
+            <tr>
+              <th className="py-1.5 pr-2 font-medium">Campaña</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Inversión</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Conv. Google</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Oportunidades</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Coste/oport.</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Presupuestado</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Ganadas</th>
+              <th className="py-1.5 pr-2 text-right font-medium">Ganado</th>
+              <th className="py-1.5 text-right font-medium">Retorno</th>
+            </tr>
+          </thead>
+          <tbody>
+            {v.campanas.map((c) => (
+              <tr key={c.campana || "-"} className="border-t border-[#efefec]">
+                <td className="py-1.5 pr-2 font-medium">{c.campana || <span className="font-normal text-[#8a8a8a]">Sin campaña clara (producto sin clasificar)</span>}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{c.campana ? dinero.fmt(c.gasto) : "—"}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{c.campana ? dec1(c.conversionesGoogle) : "—"}</td>
+                <td className="py-1.5 pr-2 text-right font-semibold tabular-nums">{dec1(c.oportunidades)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{dinero.fmt(c.costeOportunidad)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{eurCorto(c.presupuestado)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{dec1(c.ganadas)}</td>
+                <td className="py-1.5 pr-2 text-right tabular-nums">{eurCorto(c.ganado)}</td>
+                <td className={`py-1.5 text-right font-semibold tabular-nums ${c.retorno === null ? "" : c.retorno >= 1 ? "text-[#1e7e34]" : "text-[#b3161b]"}`}>
+                  {c.retorno === null ? "—" : dec1(c.retorno) + " ×"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-1 text-xs text-[#8a8a8a]">Si una oportunidad pide muelles y puertas, cuenta media en cada campaña. Retorno = ganado ÷ inversión (en euros); por encima de 1 × los anuncios se pagan solos.</p>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[#404040]">Oportunidades del periodo · {v.ops.length}</p>
+          {!v.ops.length ? (
+            <p className="text-sm text-[#606060]">Ninguna todavía.</p>
+          ) : (
+            <div className="max-h-[320px] overflow-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead className="sticky top-0 bg-white text-left text-xs text-[#606060]">
+                  <tr>
+                    <th className="py-1 pr-2 font-medium">Oportunidad</th>
+                    <th className="py-1 pr-2 font-medium">Canal</th>
+                    <th className="py-1 pr-2 font-medium">Campaña</th>
+                    <th className="py-1 pr-2 font-medium">Estado</th>
+                    <th className="py-1 text-right font-medium">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.ops.map((o) => (
+                    <tr key={o.codigo} className="border-t border-[#efefec]">
+                      <td className="py-1 pr-2">
+                        <Link href={`/oportunidades/${o.codigo}`} className="font-semibold underline decoration-[#e2e0dc] underline-offset-2 hover:decoration-[#282828]">
+                          {o.codigo}
+                        </Link>{" "}
+                        <span className="text-xs text-[#606060]">{o.empresa}</span>
+                      </td>
+                      <td className="py-1 pr-2 text-xs">{o.canal}</td>
+                      <td className="py-1 pr-2 text-xs text-[#606060]">{o.campanas.map((c) => c.replace(/_/g, " ")).join(" + ") || "—"}</td>
+                      <td className={`py-1 pr-2 text-xs ${/^ganado$/i.test(o.estado) ? "font-semibold text-[#1e7e34]" : /^perdido$/i.test(o.estado) ? "text-[#b3161b]" : ""}`}>{o.estado}</td>
+                      <td className="py-1 text-right tabular-nums">{o.importe ? eur(o.importe) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        {!!acciones.length && (
+          <div>
+            <p className="mb-1 text-xs font-semibold text-[#404040]">Qué cuenta Google como conversión</p>
+            <ul className="text-sm">
+              {acciones.map((a) => (
+                <li key={a.accion} className="flex justify-between border-t border-[#efefec] py-1">
+                  <span>{a.accion}</span>
+                  <span className="tabular-nums">{dec1(a.conversiones)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-[#8a8a8a]">Periodo completo elegido. Un clic en «WhatsApp» o «Llamada» no siempre acaba en una petición de presupuesto.</p>
+          </div>
+        )}
+      </div>
+    </Tarjeta>
   );
 }
