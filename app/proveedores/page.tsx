@@ -17,6 +17,7 @@ import CotizadorPanel, { type CartLine } from "../components/CotizadorPanel";
 import ChangelogModal from "../components/ChangelogModal";
 import { PortalTabs } from "../components/PortalNav";
 import { BotonTutorial, Tutorial } from "../components/Tutorial";
+import { Asistente } from "../components/Asistente";
 import FichasTecnicasModal from "../components/FichasTecnicasModal";
 
 type SortKey = "fecha_presupuesto" | "precio_unitario" | "tipo_producto" | "marca";
@@ -200,6 +201,7 @@ export default function ProveedoresPage() {
         </div>
       </header>
       <Tutorial />
+      <Asistente />
 
       <div className="flex flex-1">
         <Sidebar

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Anchor, ClipboardCheck, FileSearch, HelpCircle, Megaphone, PhoneCall, Settings2, Smartphone, Tags, Truck, X, type LucideIcon } from "lucide-react";
+import { Anchor, Bot, ClipboardCheck, FileSearch, HelpCircle, Megaphone, PhoneCall, Settings2, Smartphone, Tags, Truck, X, type LucideIcon } from "lucide-react";
 
 // Recorrido guiado de Dársena: sale la primera vez que alguien entra (en ese navegador) y se vuelve a abrir con
 // el botón "?" de la cabecera. Cada paso lleva a su sección, resalta su pestaña (o el menú en el móvil) y, si la
@@ -78,6 +78,13 @@ const PASOS: Paso[] = [
     ruta: "/automatizaciones",
     texto:
       "Qué hace cada automatización y si funciona en la cuenta de cada persona. Cada minuto revisan los emails etiquetados, crean presupuestos al marcar las casillas del Sheet, piden y leen precios de proveedores y hacen el seguimiento a clientes. Nada se envía solo: siempre te dejan borradores.",
+  },
+  {
+    icono: Bot,
+    titulo: "¿Dudas? Pregunta al asistente",
+    foco: "asistente",
+    texto:
+      "El botón redondo de abajo a la derecha abre el asistente. Pregúntale por un error, cómo hacer algo o una oportunidad por su código (p. ej. «¿qué pasa con BEUQ419?»): mira el estado de la automatización y los datos en directo y te contesta en dos líneas.",
   },
   {
     icono: Smartphone,
@@ -281,6 +288,6 @@ export function Tutorial() {
       {tarjeta}
     </div>
   ) : (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex justify-center sm:inset-x-auto sm:bottom-5 sm:right-5 sm:justify-end">{tarjeta}</div>
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex justify-center sm:inset-x-auto sm:bottom-5 sm:left-5 sm:justify-start">{tarjeta}</div>
   );
 }

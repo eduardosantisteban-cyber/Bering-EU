@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { logout } from "@/lib/apiClient";
 import { BotonTutorial, Tutorial } from "./Tutorial";
+import { Asistente } from "./Asistente";
 
 // Navegación común de Dársena (el portal de Bering EU).
 // En pantallas pequeñas las secciones van en un menú desplegable.
@@ -113,6 +114,7 @@ export function PortalHeader({ children }: { children?: React.ReactNode }) {
       )}
     </header>
     <Tutorial />
+    <Asistente />
     </>
   );
 }

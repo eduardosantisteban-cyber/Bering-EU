@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.0.0";
+export const APP_VERSION = "4.1.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "4.1.0",
+    desc: "Asistente de Dársena: botón abajo a la derecha en todas las secciones para preguntar dudas y problemas de la automatización; responde breve con el estado, los errores y los datos de la oportunidad que se cite. Recorrido guiado de bienvenida",
+  },
   {
     version: "4.0.0",
     desc: "El portal pasa a llamarse Dársena. Nuevo: bandeja «Hoy» en el Inicio (todo lo que hay que hacer, de todas las fuentes), ficha completa de cada oportunidad con su línea de tiempo, sección Proveedores (rendimiento, prioridad y costes de instalación y transporte editables), sección Marketing (Google Ads: inversión, clics, impresiones, conversiones y presupuesto en el tiempo), Automatizaciones al día con el estado de cada cuenta y menú para móvil",
