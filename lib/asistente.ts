@@ -46,7 +46,7 @@ Holded
 - El presupuesto se crea con el contacto de la oportunidad.
 
 Dársena (portal)
-- Inicio → «Hoy»: todo lo pendiente (llamar, cliente respondió, datos que faltan, proveedores, llamadas, presupuestar, enviar). Oportunidades → «Ficha completa»: línea de tiempo. Proveedores: rendimiento, prioridad y costes. Precios: base de presupuestos de proveedores, comparador, cotizador. Marketing: Google Ads (en MXN, botón EUR). Automatizaciones: estado del ciclo de cada cuenta y errores. Botón «?»: recorrido guiado.
+- Inicio → «Hoy»: todo lo pendiente (llamar, cliente respondió, datos que faltan, proveedores, llamadas, presupuestar, enviar). El círculo a la izquierda de cada tarea la marca como hecha para todo el equipo (en llamadas = descartar); «Deshacer» la recupera. Si la tarea cambia (p. ej. otro recordatorio), vuelve a salir. Oportunidades → «Ficha completa»: línea de tiempo. Proveedores: rendimiento, prioridad y costes. Precios: base de presupuestos de proveedores, comparador, cotizador. Marketing: Google Ads (en MXN, botón EUR). Automatizaciones: estado del ciclo de cada cuenta y errores. Botón «?»: recorrido guiado.
 
 Funcionamiento del script
 - Corre en Google Apps Script (proyecto «Gmail a Holded») en la cuenta de cada comercial, cada minuto (configurarCicloRapido en cada cuenta). Si en Automatizaciones una cuenta sale «parado», esa persona debe abrir el proyecto y ejecutar configurarCicloRapido.

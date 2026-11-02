@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ClipboardList, ExternalLink, FileQuestion, Mail, PhoneCall, PhoneMissed, Send, Truck, type LucideIcon } from "lucide-react";
-import { bandejaHoy, NOMBRE_TAREA, type EntradaPortal, type LlamadaPendiente, type Peticion, type Tarea, type TipoTarea } from "@/lib/darsena";
+import { AlertTriangle, Check, ClipboardList, ExternalLink, FileQuestion, Mail, PhoneCall, PhoneMissed, Send, Truck, type LucideIcon } from "lucide-react";
+import { bandejaHoy, sinHechas, NOMBRE_TAREA, type EntradaPortal, type LlamadaPendiente, type Peticion, type Tarea, type TipoTarea } from "@/lib/darsena";
 import { nombreDeEmail, type Oportunidad } from "@/lib/solicitudes";
 
 // Piezas de Dársena: bandeja "Hoy" y datos auxiliares (peticiones a proveedores, llamadas y entradas del portal).
@@ -22,10 +22,11 @@ export function useDatosHoy() {
   const [entradas, setEntradas] = useState<EntradaPortal[]>([]);
   const [avisos, setAvisos] = useState<string[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [hechas, setHechas] = useState<Set<string>>(new Set());
 
   const cargar = useCallback(async () => {
     const av: string[] = [];
-    const [p, e] = await Promise.all([
+    const [p, e, h] = await Promise.all([
       leerJson<{ peticiones: Peticion[] }>("/api/darsena/peticiones").catch((err: Error) => {
         av.push("Peticiones a proveedores: " + err.message);
         return { peticiones: [] as Peticion[] };
@@ -34,7 +35,9 @@ export function useDatosHoy() {
         av.push("Llamadas y entradas del portal: " + err.message);
         return { entradas: [] as EntradaPortal[], llamadas: [] as LlamadaPendiente[] };
       }),
+      leerJson<{ claves: string[] }>("/api/darsena/tareas").catch(() => ({ claves: [] as string[] })),
     ]);
+    setHechas(new Set(h.claves || []));
     setPeticiones(p.peticiones || []);
     setLlamadas(e.llamadas || []);
     setEntradas(e.entradas || []);
@@ -47,7 +50,34 @@ export function useDatosHoy() {
     cargar();
   }, [cargar]);
 
-  return { peticiones, llamadas, entradas, avisos, cargando, recargar: cargar };
+  /** Marca (o desmarca) una tarea como hecha para todo el equipo. Las llamadas se descartan como en «+ Nueva». */
+  const marcar = useCallback(async (t: Tarea, hecho: boolean, por?: string) => {
+    setHechas((s) => {
+      const n = new Set(s);
+      if (hecho) n.add(t.clave);
+      else n.delete(t.clave);
+      return n;
+    });
+    try {
+      if (t.tipo === "llamada") {
+        await fetch("/api/entradas/llamadas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: t.id.replace(/^llamada-/, ""), accion: hecho ? "descartar" : "reabrir" }),
+        });
+      }
+      const res = await fetch("/api/darsena/tareas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clave: t.clave, hecho, por }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `Error ${res.status}`);
+    } catch (e) {
+      setAvisos((a) => [...a, "No se pudo guardar la tarea: " + (e as Error).message]);
+    }
+  }, []);
+
+  return { peticiones, llamadas, entradas, avisos, cargando, hechas, marcar, recargar: cargar };
 }
 
 const ICONO: Record<TipoTarea, LucideIcon> = {
@@ -72,11 +102,22 @@ const COLOR: Record<TipoTarea, string> = {
   enviar: "#4b5563",
 };
 
-function FilaTarea({ t, mostrarQuien, onAbrir }: { t: Tarea; mostrarQuien: boolean; onAbrir?: (codigo: string) => void }) {
+function FilaTarea({ t, mostrarQuien, onAbrir, onHecho }: { t: Tarea; mostrarQuien: boolean; onAbrir?: (codigo: string) => void; onHecho?: () => void }) {
   const Icono = ICONO[t.tipo];
   const externo = t.enlace && /^https?:/.test(t.enlace.url);
   return (
-    <li className={`flex items-start gap-3 py-2.5 ${t.prioridad === 1 ? "" : "opacity-90"}`}>
+    <li className={`group flex items-start gap-3 py-2.5 ${t.prioridad === 1 ? "" : "opacity-90"}`}>
+      {onHecho && (
+        <button
+          type="button"
+          onClick={onHecho}
+          className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-[#c9c7c2] text-transparent transition hover:border-[#1e7e34] hover:bg-[#e6f4ea] hover:text-[#1e7e34]"
+          aria-label={t.tipo === "llamada" ? `Descartar: ${t.titulo}` : `Marcar como hecha: ${t.titulo}`}
+          title={t.tipo === "llamada" ? "Descartar (no es una oportunidad o ya está atendida)" : "Marcar como hecha"}
+        >
+          <Check size={12} strokeWidth={3} />
+        </button>
+      )}
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: COLOR[t.tipo] + "14", color: COLOR[t.tipo] }} aria-hidden>
         <Icono size={15} />
       </span>
@@ -140,10 +181,15 @@ export function BandejaHoy({
 }) {
   const [tipo, setTipo] = useState<TipoTarea | "">("");
   const [todas, setTodas] = useState(false);
+  const [ultima, setUltima] = useState<Tarea | null>(null);
   const tareas = useMemo(() => {
-    const t = bandejaHoy(ops, datos.peticiones, datos.llamadas, datos.entradas, ahora);
+    const t = sinHechas(bandejaHoy(ops, datos.peticiones, datos.llamadas, datos.entradas, ahora), datos.hechas);
     return quien ? t.filter((x) => !x.quien || x.quien === quien) : t;
-  }, [ops, datos.peticiones, datos.llamadas, datos.entradas, ahora, quien]);
+  }, [ops, datos.peticiones, datos.llamadas, datos.entradas, datos.hechas, ahora, quien]);
+  const hecho = (t: Tarea) => {
+    setUltima(t);
+    datos.marcar(t, true, quien || undefined);
+  };
   const tipos = useMemo(() => {
     const m = new Map<TipoTarea, number>();
     for (const t of tareas) m.set(t.tipo, (m.get(t.tipo) || 0) + 1);
@@ -179,6 +225,21 @@ export function BandejaHoy({
           ))}
         </div>
       )}
+      {ultima && (
+        <p className="mb-2 flex items-center gap-2 rounded-md bg-[#e6f4ea] px-3 py-1.5 text-xs text-[#1e7e34]">
+          <Check size={13} /> <span className="min-w-0 flex-1 truncate">Hecha: {ultima.titulo}</span>
+          <button
+            type="button"
+            onClick={() => {
+              datos.marcar(ultima, false);
+              setUltima(null);
+            }}
+            className="font-semibold underline"
+          >
+            Deshacer
+          </button>
+        </p>
+      )}
       {datos.cargando && !tareas.length ? (
         <p className="py-2 text-sm text-[#606060]">Cargando…</p>
       ) : !tareas.length ? (
@@ -186,7 +247,7 @@ export function BandejaHoy({
       ) : (
         <ul className="divide-y divide-[#efefec]">
           {lista.map((t) => (
-            <FilaTarea key={t.id} t={t} mostrarQuien={!quien} onAbrir={onAbrir} />
+            <FilaTarea key={t.id} t={t} mostrarQuien={!quien} onAbrir={onAbrir} onHecho={() => hecho(t)} />
           ))}
         </ul>
       )}

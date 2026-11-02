@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaM2, bandejaHoy, estadisticasProveedores, fechasDeLineas, parsearPeticiones } from "./darsena";
+import { areaM2, bandejaHoy, estadisticasProveedores, fechasDeLineas, firma, parsearPeticiones, sinHechas } from "./darsena";
 import { parsearSolicitudes } from "./solicitudes";
 
 const serial = (iso: string) => new Date(iso).getTime() / 86400000 + 25569;
@@ -44,6 +44,17 @@ describe("peticiones a proveedores", () => {
     const nov = f.find((x) => x.proveedor === "Novoferm");
     expect(nov?.indicePrecio).toBeGreaterThan(0);
     expect(f.find((x) => x.proveedor === "Porta Fire")?.tasaRespuesta).toBe(1);
+  });
+});
+
+describe("tareas hechas", () => {
+  it("la firma es estable y cambia con el contenido", () => {
+    expect(firma("a|b")).toBe(firma("a|b"));
+    expect(firma("a|b")).not.toBe(firma("a|c"));
+  });
+  it("quita las hechas por clave", () => {
+    const t = [{ clave: "x|1" }, { clave: "y|2" }] as unknown as Parameters<typeof sinHechas>[0];
+    expect(sinHechas(t, new Set(["x|1"]))).toHaveLength(1);
   });
 });
 

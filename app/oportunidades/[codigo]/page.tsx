@@ -21,7 +21,7 @@ import {
   fechaCorta,
   usePortalData,
 } from "../../components/portal";
-import { bandejaHoy, lineaDeTiempo, NOMBRE_TAREA, type Hito, type Peticion } from "@/lib/darsena";
+import { bandejaHoy, sinHechas, lineaDeTiempo, NOMBRE_TAREA, type Hito, type Peticion } from "@/lib/darsena";
 import { nombreDeEmail } from "@/lib/solicitudes";
 
 // Ficha completa de una oportunidad: qué toca, línea de tiempo, peticiones a proveedores y líneas del presupuesto.
@@ -66,6 +66,7 @@ export default function FichaPage() {
   const { data, error, loading, refreshing, recargar } = usePortalData();
   const [extra, setExtra] = useState<Extra | null>(null);
   const [errorExtra, setErrorExtra] = useState<string | null>(null);
+  const [hechas, setHechas] = useState<Set<string>>(new Set());
 
   const cargarExtra = useCallback(async () => {
     try {
@@ -74,6 +75,8 @@ export default function FichaPage() {
       if (!res.ok) throw new Error(body?.error || `Error ${res.status}`);
       setExtra(body as Extra);
       setErrorExtra(null);
+      const t = await fetch("/api/darsena/tareas", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+      if (t && Array.isArray(t.claves)) setHechas(new Set(t.claves as string[]));
     } catch (err) {
       setErrorExtra((err as Error).message);
     }
@@ -87,7 +90,7 @@ export default function FichaPage() {
   const o = data?.oportunidades.find((x) => x.codigo === codigo) || null;
   const ahora = useMemo(() => (data ? new Date(data.generado) : new Date()), [data]);
   const hitos = useMemo(() => (o ? lineaDeTiempo(o, extra?.historial ?? [], extra?.peticiones ?? []) : []), [o, extra]);
-  const tareas = useMemo(() => (o ? bandejaHoy([o], extra?.peticiones ?? [], [], [], ahora) : []), [o, extra, ahora]);
+  const tareas = useMemo(() => (o ? sinHechas(bandejaHoy([o], extra?.peticiones ?? [], [], [], ahora), hechas) : []), [o, extra, ahora, hechas]);
   const revision = useMemo(() => {
     const ls = extra?.lineas ?? [];
     const ultima = ls.reduce((m, l) => (String(l.numero || "") > m ? String(l.numero || "") : m), "");

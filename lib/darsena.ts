@@ -114,6 +114,8 @@ export type TipoTarea = "llamar" | "presupuestar" | "datos" | "enviar" | "provee
 
 export interface Tarea {
   id: string;
+  /** id + firma del contenido: lo que se guarda al marcarla como hecha (si el contenido cambia, vuelve a salir) */
+  clave: string;
   tipo: TipoTarea;
   prioridad: 1 | 2 | 3; // 1 = hoy sin falta
   titulo: string;
@@ -136,6 +138,18 @@ export const NOMBRE_TAREA: Record<TipoTarea, string> = {
   respondio: "El cliente respondió",
 };
 
+/** Hash corto y estable de un texto (djb2 en base 36). */
+export function firma(texto: string): string {
+  let h = 5381;
+  for (let i = 0; i < texto.length; i++) h = ((h << 5) + h + texto.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** Quita las tareas marcadas como hechas. */
+export function sinHechas(tareas: Tarea[], hechas: Set<string>): Tarea[] {
+  return tareas.filter((t) => !hechas.has(t.clave));
+}
+
 const dias = (desde: string | null, ahora: Date) => (desde ? Math.floor((ahora.getTime() - new Date(desde).getTime()) / DIA) : null);
 
 /**
@@ -150,7 +164,7 @@ export function bandejaHoy(
   entradas: EntradaPortal[],
   ahora: Date
 ): Tarea[] {
-  const tareas: Tarea[] = [];
+  const tareas: Omit<Tarea, "clave">[] = [];
   const porCodigo = new Map(ops.map((o) => [o.codigo, o]));
   const cerradas = new Set(ops.filter((o) => o.estado === ESTADOS.GANADO || o.estado === ESTADOS.PERDIDO).map((o) => o.codigo));
 
@@ -235,8 +249,9 @@ export function bandejaHoy(
     });
   }
 
+  const conClave: Tarea[] = tareas.map((t) => ({ ...t, clave: t.id + "|" + firma(t.titulo + "|" + t.detalle) }));
   const orden: Record<TipoTarea, number> = { llamar: 0, respondio: 1, error: 2, llamada: 3, datos: 4, proveedor: 5, presupuestar: 6, enviar: 7 };
-  return tareas.sort((a, b) => a.prioridad - b.prioridad || orden[a.tipo] - orden[b.tipo] || (b.dias ?? 0) - (a.dias ?? 0));
+  return conClave.sort((a, b) => a.prioridad - b.prioridad || orden[a.tipo] - orden[b.tipo] || (b.dias ?? 0) - (a.dias ?? 0));
 }
 
 // ── Línea de tiempo de una oportunidad ──
