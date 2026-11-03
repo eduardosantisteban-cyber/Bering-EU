@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { resumirTerminos, type FilaAds, type FilaTermino } from "@/lib/marketing";
+import { campanasPorGclid, resumirTerminos, type FilaAds, type FilaTermino } from "@/lib/marketing";
+import { leerRangoOpcional, serviceAccountEmail } from "@/lib/googleSheets";
+import { fechaDeCelda } from "@/lib/solicitudes";
 
 // Marketing: datos de Google Ads (cuenta "Bering") a través de Windsor.ai.
 //  GET ?dias=90 → filas diarias por campaña (gasto, clics, impresiones, conversiones, presupuesto diario)
@@ -31,6 +33,38 @@ async function tipoCambioEur(moneda: string): Promise<{ eur: number; fecha: stri
   }
 }
 
+// Hoja «Bering EU – Marketing (automatizaciones)»: su pestaña GCLID guarda el clic de Google de cada oportunidad
+// que llega por el formulario web. La cuenta de servicio de Dársena necesita acceso de lector.
+const HOJA_MARKETING = process.env.MARKETING_SHEET_ID || "1yQKPhKQx9o2t06n4mUyQdCoPbS5SwOhOIGf2H49KBvI";
+
+/** código → campaña del clic, para las oportunidades con GCLID (los clics de Google Ads se guardan 90 días). */
+async function clicsDeOportunidades(key: string, hasta: string): Promise<{ porGclid: Record<string, string>; aviso: string }> {
+  let filas: unknown[][];
+  try {
+    filas = await leerRangoOpcional(HOJA_MARKETING, "GCLID!A2:D");
+  } catch (e) {
+    const sa = serviceAccountEmail();
+    return {
+      porGclid: {},
+      aviso: /403|permission|PERMISSION/i.test((e as Error).message)
+        ? `Para confirmar las oportunidades con el clic de Google, comparte la hoja «Bering EU – Marketing (automatizaciones)» como Lector con ${sa || "la cuenta de servicio de Dársena"}.`
+        : "No se pudo leer la pestaña GCLID: " + (e as Error).message.slice(0, 120),
+    };
+  }
+  const registros = filas
+    .map((r) => ({ codigo: String(r?.[0] ?? "").trim().toUpperCase(), gclid: String(r?.[2] ?? "").trim(), fecha: fechaDeCelda(r?.[3]) }))
+    .filter((r) => r.codigo && r.gclid && !/sin gclid/i.test(r.gclid));
+  if (!registros.length) return { porGclid: {}, aviso: "" };
+  const limite = new Date(new Date(hasta + "T12:00:00Z").getTime() - 89 * 86400000);
+  const primera = registros.reduce((m, r) => (r.fecha && r.fecha < m ? r.fecha : m), new Date(hasta + "T12:00:00Z"));
+  const desde = new Date(Math.max(limite.getTime(), primera.getTime() - 30 * 86400000)).toISOString().slice(0, 10);
+  const clics = await windsor(key, ["date", "gclid", "campaign"], desde, hasta).catch(() => [] as Record<string, unknown>[]);
+  return {
+    porGclid: campanasPorGclid(registros, clics.map((c) => ({ gclid: String(c.gclid || ""), campana: String(c.campaign || "") }))),
+    aviso: "",
+  };
+}
+
 const n = (v: unknown) => {
   const x = Number(v);
   return isFinite(x) ? x : 0;
@@ -50,11 +84,12 @@ export async function GET(req: Request) {
   const desde = new Date(hoy.getTime() - (dias - 1) * 86400000).toISOString().slice(0, 10);
   const desdeAnterior = new Date(hoy.getTime() - (2 * dias - 1) * 86400000).toISOString().slice(0, 10);
   try {
-    const [diario, terminos, monedaRows, accionesRows] = await Promise.all([
+    const [diario, terminos, monedaRows, accionesRows, gclids] = await Promise.all([
       windsor(key, ["date", "campaign", "campaign_status", "spend", "clicks", "impressions", "conversions", "budget_amount"], desdeAnterior, hasta),
       windsor(key, ["search_term", "campaign", "spend", "clicks", "impressions", "conversions"], desde, hasta).catch(() => []),
       windsor(key, ["account_currency_code", "spend"], desde, hasta).catch(() => []),
       windsor(key, ["campaign", "conversion_action_name", "conversions"], desde, hasta).catch(() => []),
+      clicsDeOportunidades(key, hasta).catch((e: Error) => ({ porGclid: {} as Record<string, string>, aviso: e.message.slice(0, 160) })),
     ]);
     // Qué cuenta Google como conversión (clic en WhatsApp, en llamar, formulario…), sumado en el periodo
     const accionesMapa = new Map<string, number>();
@@ -86,7 +121,7 @@ export async function GET(req: Request) {
       conversiones: n(r.conversions),
     }));
     return NextResponse.json(
-      { desde, hasta, desdeAnterior, dias, moneda, cambio, filas, terminos: resumirTerminos(terms), acciones, generado: new Date().toISOString() },
+      { desde, hasta, desdeAnterior, dias, moneda, cambio, filas, terminos: resumirTerminos(terms), acciones, porGclid: gclids.porGclid, avisoGclid: gclids.aviso, generado: new Date().toISOString() },
       { headers: { "Cache-Control": "private, max-age=300" } }
     );
   } catch (err) {

@@ -25,6 +25,8 @@ interface DatosAds {
   filas: FilaAds[];
   terminos: FilaTermino[];
   acciones?: { accion: string; conversiones: number }[];
+  porGclid?: Record<string, string>;
+  avisoGclid?: string;
   generado: string;
 }
 
@@ -120,7 +122,7 @@ export default function MarketingPage() {
   const ventas = useMemo(() => {
     if (!datos || !portal.data) return null;
     const ops = portal.data.oportunidades.filter((o) => o.origen === "hoja");
-    return ventasDeAnuncios(ops, datos.filas, datos.desde, datos.hasta, primerDiaConCanal(ops), datos.cambio?.eur ?? null);
+    return ventasDeAnuncios(ops, datos.filas, datos.desde, datos.hasta, primerDiaConCanal(ops), datos.cambio?.eur ?? null, datos.porGclid ?? {});
   }, [datos, portal.data]);
 
   const sobrePresupuesto = filasCampana.filter((c) => c.usoPresupuesto !== null && c.usoPresupuesto > 1.1);
@@ -245,7 +247,7 @@ export default function MarketingPage() {
               </p>
             )}
 
-            {ventas && <VentasAnuncios v={ventas} dinero={dinero} acciones={datos?.acciones ?? []} />}
+            {ventas && <VentasAnuncios v={ventas} dinero={dinero} acciones={datos?.acciones ?? []} aviso={datos?.avisoGclid} />}
 
             <Tarjeta
               titulo="Presupuesto, clics y conversiones"
@@ -540,7 +542,7 @@ function GraficoAlineado({ puntos, dinero }: { puntos: Punto[]; dinero: ReturnTy
  * ¿Qué ventas trae Google Ads? Embudo de conversiones de Google → oportunidades reales → presupuestadas → ganadas,
  * por campaña, con la lista de oportunidades. Atribución por canal y producto (no exacta).
  */
-function VentasAnuncios({ v, dinero, acciones }: { v: Ventas; dinero: ReturnType<typeof useDinero>; acciones: { accion: string; conversiones: number }[] }) {
+function VentasAnuncios({ v, dinero, acciones, aviso }: { v: Ventas; dinero: ReturnType<typeof useDinero>; acciones: { accion: string; conversiones: number }[]; aviso?: string }) {
   const t = v.total;
   const sinCambio = dinero.moneda !== "EUR" && t.retorno === null && t.gasto > 0;
   const gastoEur = dinero.moneda === "EUR" ? t.gasto : t.retorno !== null && t.ganado ? t.ganado / t.retorno : null;
@@ -553,8 +555,13 @@ function VentasAnuncios({ v, dinero, acciones }: { v: Ventas; dinero: ReturnType
   return (
     <Tarjeta
       titulo="¿Qué ventas trae Google Ads?"
-      sub={`Del ${fechaCorta(v.desde)} al ${fechaCorta(v.hasta)} (antes no se registraba el canal). Oportunidades que llegan por formulario web, info@, llamada o WhatsApp, asignadas a la campaña de su producto. «Email directo» y Muelle Max no cuentan. Es una estimación: Google no dice qué oportunidad viene de qué anuncio.`}
+      sub={`Del ${fechaCorta(v.desde)} al ${fechaCorta(v.hasta)} (antes no se registraba el canal). Oportunidades que llegan por formulario web, info@, llamada o WhatsApp, asignadas a la campaña de su producto. «Email directo» y Muelle Max no cuentan. Las que traen el clic de Google desde el formulario web (GCLID) cuentan seguro y con su campaña real, lleguen por donde lleguen; las demás son una estimación.`}
     >
+      <p className="mb-3 text-xs text-[#404040]">
+        <span className="mr-1 rounded bg-[#e6f4ea] px-1.5 py-0.5 font-semibold text-[#1e7e34]">✓ {v.confirmadas}</span>
+        de {v.ops.length} oportunidades confirmadas con el clic de Google; {v.ops.length - v.confirmadas} estimadas por canal y producto.
+        {aviso ? <span className="ml-1 text-[#9a5b00]">{aviso}</span> : null}
+      </p>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
         {pasos.map((p, i) => (
           <div key={p.titulo} className="rounded-md border border-[#e2e0dc] px-3 py-2">
@@ -622,12 +629,13 @@ function VentasAnuncios({ v, dinero, acciones }: { v: Ventas; dinero: ReturnType
             <p className="text-sm text-[#606060]">Ninguna todavía.</p>
           ) : (
             <div className="max-h-[320px] overflow-auto">
-              <table className="w-full min-w-[620px] text-sm">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="sticky top-0 bg-white text-left text-xs text-[#606060]">
                   <tr>
                     <th className="py-1 pr-2 font-medium">Oportunidad</th>
                     <th className="py-1 pr-2 font-medium">Canal</th>
                     <th className="py-1 pr-2 font-medium">Campaña</th>
+                    <th className="py-1 pr-2 font-medium">Origen</th>
                     <th className="py-1 pr-2 font-medium">Estado</th>
                     <th className="py-1 text-right font-medium">Importe</th>
                   </tr>
@@ -643,6 +651,15 @@ function VentasAnuncios({ v, dinero, acciones }: { v: Ventas; dinero: ReturnType
                       </td>
                       <td className="py-1 pr-2 text-xs">{o.canal}</td>
                       <td className="py-1 pr-2 text-xs text-[#606060]">{o.campanas.map((c) => c.replace(/_/g, " ")).join(" + ") || "—"}</td>
+                      <td className="py-1 pr-2 text-xs">
+                        {o.confirmada ? (
+                          <span className="rounded bg-[#e6f4ea] px-1.5 py-0.5 font-semibold text-[#1e7e34]" title="El formulario web trajo el clic de Google (GCLID)">
+                            ✓ Anuncio
+                          </span>
+                        ) : (
+                          <span className="text-[#8a8a8a]">Estimada</span>
+                        )}
+                      </td>
                       <td className={`py-1 pr-2 text-xs ${/^ganado$/i.test(o.estado) ? "font-semibold text-[#1e7e34]" : /^perdido$/i.test(o.estado) ? "text-[#b3161b]" : ""}`}>{o.estado}</td>
                       <td className="py-1 text-right tabular-nums">{o.importe ? eur(o.importe) : "—"}</td>
                     </tr>

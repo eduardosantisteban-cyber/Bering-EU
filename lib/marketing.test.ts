@@ -79,3 +79,22 @@ describe("ventas que trae Google Ads", () => {
     ])).toBe("2026-10-13");
   });
 });
+
+import { campanasPorGclid } from "./marketing";
+
+describe("clic de Google (GCLID)", () => {
+  it("confirma la oportunidad y usa la campaña del clic", () => {
+    const porGclid = campanasPorGclid(
+      [{ codigo: "BEUQ425", gclid: "abc" }, { codigo: "BEUQ401", gclid: "(sin GCLID)" }, { codigo: "BEUQ9", gclid: "viejo" }],
+      [{ gclid: "abc", campana: "Puertas_Tráfico" }]
+    );
+    expect(porGclid).toEqual({ BEUQ425: "Puertas_Tráfico", BEUQ9: "" });
+    const ads = [{ fecha: "2026-11-03", campana: "Puertas_Tráfico", estado: "", gasto: 100, clics: 1, impresiones: 1, conversiones: 1, presupuesto: 0 },
+      { fecha: "2026-11-03", campana: "Muelles_Carga_Tráfico", estado: "", gasto: 100, clics: 1, impresiones: 1, conversiones: 1, presupuesto: 0 }];
+    const op = { codigo: "BEUQ425", empresa: "X", canal: "Reenviado por el equipo", productos: "Muelle de carga", estado: "Pendiente presupuesto", importe: null, fechaSolicitud: "2026-11-03T16:06:00Z" };
+    const v = ventasDeAnuncios([op], ads, "2026-10-01", "2026-11-03", "2026-10-13", null, porGclid);
+    expect(v.confirmadas).toBe(1);
+    expect(v.ops[0]).toMatchObject({ confirmada: true, campanas: ["Puertas_Tráfico"] });
+    expect(ventasDeAnuncios([op], ads, "2026-10-01", "2026-11-03", "2026-10-13", null).ops).toHaveLength(0);
+  });
+});

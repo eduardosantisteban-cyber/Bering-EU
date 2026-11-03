@@ -194,7 +194,9 @@ export interface Ventas {
   /** Desde cuándo hay canal en las oportunidades (antes no se puede saber de dónde vinieron) */
   desde: string;
   hasta: string;
-  ops: (OpMarketing & { campanas: string[] })[];
+  /** confirmada = el formulario trajo el clic de Google (GCLID): viene seguro de un anuncio */
+  ops: (OpMarketing & { campanas: string[]; confirmada: boolean })[];
+  confirmadas: number;
   campanas: FilaVentas[];
   total: FilaVentas;
 }
@@ -209,14 +211,20 @@ export function ventasDeAnuncios(
   desde: string,
   hasta: string,
   desdeCanal: string | null,
-  eurPorUnidad: number | null
+  eurPorUnidad: number | null,
+  /** código → campaña del clic (GCLID); "" si hubo clic pero no se sabe la campaña */
+  porGclid: Record<string, string> = {}
 ): Ventas {
   const inicio = desdeCanal && desdeCanal > desde ? desdeCanal : desde;
   const ads = entre(filas, inicio, hasta);
   const nombres = [...new Set(filas.map((f) => f.campana))].sort();
   const elegidas = ops
-    .filter((o) => o.fechaSolicitud && o.fechaSolicitud.slice(0, 10) >= inicio && o.fechaSolicitud.slice(0, 10) <= hasta && canalDeAnuncios(o.canal))
-    .map((o) => ({ ...o, campanas: campanasDeProductos(o.productos, nombres) }))
+    .filter((o) => o.fechaSolicitud && o.fechaSolicitud.slice(0, 10) >= inicio && o.fechaSolicitud.slice(0, 10) <= hasta && (canalDeAnuncios(o.canal) || o.codigo in porGclid))
+    .map((o) => {
+      const confirmada = o.codigo in porGclid;
+      const delClic = porGclid[o.codigo];
+      return { ...o, confirmada, campanas: delClic && nombres.includes(delClic) ? [delClic] : campanasDeProductos(o.productos, nombres) };
+    })
     .sort((a, b) => String(b.fechaSolicitud).localeCompare(String(a.fechaSolicitud)));
 
   const vacia = (campana: string): FilaVentas => ({
@@ -262,6 +270,7 @@ export function ventasDeAnuncios(
     desde: inicio,
     hasta,
     ops: elegidas,
+    confirmadas: elegidas.filter((o) => o.confirmada).length,
     campanas: [...filasV.values()].map(ratios).filter((f) => f.gasto || f.oportunidades),
     total: ratios(total),
   };
@@ -274,4 +283,19 @@ export function primerDiaConCanal(ops: { canal: string; fechaSolicitud: string |
     .map((o) => String(o.fechaSolicitud).slice(0, 10))
     .sort();
   return fechas[0] || null;
+}
+
+/**
+ * Oportunidades con clic de Google (pestaña GCLID de la hoja de Marketing) → campaña del clic, cruzando con los
+ * clics de Google Ads (click_view, últimos 90 días). "" si el clic es más antiguo o no aparece.
+ */
+export function campanasPorGclid(registros: { codigo: string; gclid: string }[], clics: { gclid: string; campana: string }[]): Record<string, string> {
+  const mapa = new Map(clics.map((c) => [c.gclid, c.campana]));
+  const res: Record<string, string> = {};
+  for (const r of registros) {
+    const g = r.gclid.trim();
+    if (!r.codigo || !g || /sin gclid/i.test(g)) continue;
+    res[r.codigo.trim().toUpperCase()] = mapa.get(g) || "";
+  }
+  return res;
 }
