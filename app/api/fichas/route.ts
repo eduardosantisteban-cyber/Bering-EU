@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { createFicha, listFichas } from "@/lib/db";
 import { uid } from "@/lib/id";
 
+/** aaaa-mm-dd válida o null (la IA a veces da solo el año o el mes). */
+function fechaValida(v: unknown): string | null {
+  const m = String(v ?? "").match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/);
+  return m ? `${m[1]}-${m[2] || "01"}-${m[3] || "01"}` : null;
+}
+
 export async function GET() {
   try {
     const fichas = await listFichas();
@@ -23,6 +29,8 @@ interface CreateBody {
   nombre_archivo: string;
   storage_path: string;
   notas?: string | null;
+  fecha_documento?: string | null;
+  version?: string | null;
 }
 
 // Se llama justo después de subir el PDF a Storage (ver
@@ -43,6 +51,8 @@ export async function POST(request: Request) {
       nombre_archivo: body.nombre_archivo,
       storage_path: body.storage_path,
       notas: body.notas ?? null,
+      fecha_documento: fechaValida(body.fecha_documento),
+      version: body.version ? String(body.version).slice(0, 40) : null,
     });
     return NextResponse.json(ficha, { status: 201 });
   } catch (err) {

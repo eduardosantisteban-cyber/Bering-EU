@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { CATEGORIAS } from "@/lib/constants";
 import { normalizeMarca, normalizeStr } from "@/lib/format";
+import { compararRecencia, fechaDeFicha, versionesAnteriores } from "@/lib/fichaMatch";
 import {
   createFicha,
   deleteFicha,
@@ -49,6 +50,8 @@ export default function FichasTecnicasModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [refillingId, setRefillingId] = useState<string | null>(null);
+  const [verAnteriores, setVerAnteriores] = useState(false);
+  const [leyendoFechas, setLeyendoFechas] = useState<{ hechas: number; total: number } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -76,6 +79,10 @@ export default function FichasTecnicasModal({
     return Array.from(map.values()).sort();
   }, [fichas]);
 
+  // Fichas con otra más reciente del mismo producto (se ocultan salvo que se pida verlas)
+  const anteriores = useMemo(() => versionesAnteriores(fichas), [fichas]);
+  const sinFecha = fichas.filter((f) => !f.fecha_documento);
+
   const filtered = useMemo(() => {
     let out = fichas;
     if (filterCategoria) out = out.filter((f) => normalizeStr(f.categoria) === normalizeStr(filterCategoria));
@@ -86,8 +93,13 @@ export default function FichasTecnicasModal({
         [f.tipo_producto, f.marca, f.modelo, f.nombre_archivo].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
       );
     }
-    return out;
-  }, [fichas, filterCategoria, filterMarca, search]);
+    if (!verAnteriores) out = out.filter((f) => !anteriores.has(f.id));
+    return [...out].sort((a, b) => {
+      const ka = normalizeMarca(a.marca) + "|" + normalizeStr(a.modelo || a.nombre_archivo);
+      const kb = normalizeMarca(b.marca) + "|" + normalizeStr(b.modelo || b.nombre_archivo);
+      return ka === kb ? compararRecencia(a, b) : ka.localeCompare(kb);
+    });
+  }, [fichas, filterCategoria, filterMarca, search, verAnteriores, anteriores]);
 
   const selected = fichas.find((f) => f.id === selectedId) ?? null;
 
@@ -132,6 +144,8 @@ export default function FichasTecnicasModal({
         tipo_producto: metadata?.tipo_producto ?? null,
         marca: metadata?.marca ?? null,
         modelo: metadata?.modelo ?? null,
+        fecha_documento: metadata?.fecha_documento ?? null,
+        version: metadata?.version ?? null,
         nombre_archivo: file.name,
         storage_path: path,
       }).catch(async (err) => {
@@ -157,7 +171,7 @@ export default function FichasTecnicasModal({
     setQueue((q) => q.filter((e) => e.localId !== localId));
   }
 
-  async function patchFicha(id: string, patch: Partial<Pick<FichaTecnica, "categoria" | "tipo_producto" | "marca" | "modelo">>) {
+  async function patchFicha(id: string, patch: Partial<Pick<FichaTecnica, "categoria" | "tipo_producto" | "marca" | "modelo" | "fecha_documento" | "version">>) {
     const previous = fichas;
     setFichas((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
     try {
@@ -179,6 +193,27 @@ export default function FichasTecnicasModal({
     } finally {
       setRefillingId(null);
     }
+  }
+
+  /** Lee con IA la fecha y versión de las fichas que no la tienen (una a una, sin tocar lo demás). */
+  async function leerFechas() {
+    const pendientes = fichas.filter((f) => !f.fecha_documento);
+    setLeyendoFechas({ hechas: 0, total: pendientes.length });
+    let sinDato = 0;
+    for (let i = 0; i < pendientes.length; i++) {
+      const f = pendientes[i];
+      try {
+        const m = await extractFichaMetadata(f.storage_path);
+        if (m.fecha_documento || m.version) await patchFicha(f.id, { fecha_documento: m.fecha_documento ?? null, version: m.version ?? f.version ?? null });
+        else sinDato++;
+      } catch {
+        sinDato++;
+      }
+      setLeyendoFechas({ hechas: i + 1, total: pendientes.length });
+    }
+    setLeyendoFechas(null);
+    await refresh();
+    onNotice("success", `Fechas leídas.${sinDato ? ` ${sinDato} ficha(s) no indican fecha: se ordenan por el año del nombre del archivo o por cuándo se subieron.` : ""}`);
   }
 
   async function handleDownload(id: string) {
@@ -275,6 +310,22 @@ export default function FichasTecnicasModal({
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-2 text-xs text-[#606060]">
+                <input type="checkbox" checked={verAnteriores} onChange={(e) => setVerAnteriores(e.target.checked)} />
+                Ver también versiones anteriores ({anteriores.size})
+              </label>
+              {sinFecha.length > 0 && (
+                <button
+                  type="button"
+                  onClick={leerFechas}
+                  disabled={!!leyendoFechas}
+                  className="flex items-center justify-center gap-1.5 rounded-md border border-[#e2e0dc] px-2 py-1 text-xs text-[#606060] hover:bg-[#f5f4f2] disabled:opacity-60"
+                  title="La IA lee la fecha y la versión de cada PDF para quedarse siempre con la más reciente"
+                >
+                  {leyendoFechas ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  {leyendoFechas ? `Leyendo fechas… ${leyendoFechas.hechas}/${leyendoFechas.total}` : `Leer fecha de ${sinFecha.length} ficha(s) con IA`}
+                </button>
+              )}
               <select className={inputStyleSm + " w-full"} value={filterMarca} onChange={(e) => setFilterMarca(e.target.value)}>
                 <option value="">Todas las marcas</option>
                 {marcasDisponibles.map((m) => (
@@ -303,9 +354,12 @@ export default function FichasTecnicasModal({
                       selectedId === f.id ? "bg-[#f5f4f2]" : ""
                     }`}
                   >
-                    <p className="truncate font-medium text-[#282828]">{f.modelo || f.nombre_archivo}</p>
+                    <p className="flex items-center gap-1.5 truncate font-medium text-[#282828]">
+                      <span className="truncate">{f.modelo || f.nombre_archivo}</span>
+                      {anteriores.has(f.id) && <span className="shrink-0 rounded bg-[#efefec] px-1 py-0.5 text-[10px] font-semibold uppercase text-[#8a8a8a]">Anterior</span>}
+                    </p>
                     <p className="truncate text-[#606060]">
-                      {[f.categoria, f.marca].filter(Boolean).join(" · ") || "Sin clasificar"}
+                      {[f.categoria, f.marca, etiquetaFecha(f)].filter(Boolean).join(" · ") || "Sin clasificar"}
                     </p>
                   </button>
                 ))
@@ -377,7 +431,35 @@ export default function FichasTecnicasModal({
                     </button>
                   </div>
                 </div>
-                <p className="px-4 pt-2 text-xs text-[#606060]">{selected.nombre_archivo}</p>
+                <div className="flex flex-wrap items-end gap-3 px-4 pt-2 text-xs text-[#606060]">
+                  <Field label="Fecha del documento">
+                    <input
+                      type="date"
+                      className={inputStyleSm}
+                      defaultValue={selected.fecha_documento?.slice(0, 10) ?? ""}
+                      key={selected.id + "-fecha"}
+                      onBlur={(e) => patchFicha(selected.id, { fecha_documento: e.target.value || null })}
+                    />
+                  </Field>
+                  <Field label="Versión">
+                    <input
+                      className={inputStyleSm + " w-28"}
+                      defaultValue={selected.version ?? ""}
+                      key={selected.id + "-version"}
+                      onBlur={(e) => patchFicha(selected.id, { version: e.target.value || null })}
+                    />
+                  </Field>
+                  <span className="pb-1.5">{selected.nombre_archivo}</span>
+                </div>
+                {anteriores.has(selected.id) && (
+                  <p className="mx-4 mt-2 rounded-md bg-[#fff4e0] px-3 py-1.5 text-xs text-[#9a5b00]">
+                    Hay una ficha más reciente de este producto:{" "}
+                    <button type="button" className="font-semibold underline" onClick={() => setSelectedId(anteriores.get(selected.id)!.id)}>
+                      {anteriores.get(selected.id)!.nombre_archivo}
+                    </button>
+                    . El cotizador usa siempre la más reciente; si esta ya no vale, puedes borrarla.
+                  </p>
+                )}
                 <div className="flex-1 overflow-hidden p-4 pt-2">
                   {previewLoading ? (
                     <div className="flex h-full items-center justify-center gap-2 text-sm text-[#606060]">
@@ -398,4 +480,16 @@ export default function FichasTecnicasModal({
       </div>
     </Overlay>
   );
+}
+
+/** "2024", "mar 2025", "v07"… para la lista. */
+function etiquetaFecha(f: FichaTecnica): string {
+  const d = fechaDeFicha(f);
+  const partes: string[] = [];
+  if (d) {
+    const [y, m] = d.split("-");
+    partes.push(f.fecha_documento && m !== "01" ? `${["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(m) - 1]} ${y}` : y);
+  }
+  if (f.version) partes.push(f.version);
+  return partes.join(" ");
 }

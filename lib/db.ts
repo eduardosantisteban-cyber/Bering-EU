@@ -240,6 +240,8 @@ export async function createFicha(
       nombre_archivo: ficha.nombre_archivo,
       storage_path: ficha.storage_path,
       notas: ficha.notas ?? null,
+      fecha_documento: ficha.fecha_documento ?? null,
+      version: ficha.version ?? null,
     })
     .select()
     .single();
@@ -249,7 +251,7 @@ export async function createFicha(
 
 export async function updateFicha(
   id: string,
-  patch: Partial<Pick<FichaTecnica, "categoria" | "tipo_producto" | "marca" | "modelo" | "notas">>
+  patch: Partial<Pick<FichaTecnica, "categoria" | "tipo_producto" | "marca" | "modelo" | "notas" | "fecha_documento" | "version">>
 ): Promise<FichaTecnica> {
   const db = supabaseAdmin();
   const { data, error } = await db.from("fichas_tecnicas").update(patch).eq("id", id).select().single();

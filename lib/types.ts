@@ -63,4 +63,8 @@ export interface FichaTecnica {
   storage_path: string;
   notas: string | null;
   created_at: string;
+  /** Fecha del propio documento (aaaa-mm-dd), leída del PDF; null si no aparece */
+  fecha_documento?: string | null;
+  /** Versión o revisión del documento ("v07", "Rev. 3"…) */
+  version?: string | null;
 }

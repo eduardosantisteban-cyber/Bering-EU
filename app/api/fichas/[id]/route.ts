@@ -10,6 +10,8 @@ interface UpdateBody {
   marca?: string | null;
   modelo?: string | null;
   notas?: string | null;
+  fecha_documento?: string | null;
+  version?: string | null;
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
@@ -25,6 +27,11 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   if (body.marca !== undefined) patch.marca = body.marca;
   if (body.modelo !== undefined) patch.modelo = body.modelo;
   if (body.notas !== undefined) patch.notas = body.notas;
+  if (body.fecha_documento !== undefined) {
+    const m = String(body.fecha_documento ?? "").match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/);
+    patch.fecha_documento = m ? `${m[1]}-${m[2] || "01"}-${m[3] || "01"}` : null;
+  }
+  if (body.version !== undefined) patch.version = body.version ? String(body.version).slice(0, 40) : null;
 
   try {
     const ficha = await updateFicha(id, patch);

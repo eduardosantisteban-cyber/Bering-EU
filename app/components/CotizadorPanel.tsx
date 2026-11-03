@@ -6,7 +6,7 @@ import { Copy, FileSpreadsheet, FileText, Loader2, Send, Table, Trash2, X } from
 import type { FlatRow } from "./types";
 import { fmtMoney } from "@/lib/format";
 import { priceLine, computeTotals } from "@/lib/pricing";
-import { matchesFicha } from "@/lib/fichaMatch";
+import { masReciente, matchesFicha } from "@/lib/fichaMatch";
 import { createGoogleSheetQuote, fetchFichas, getFichaDownloadUrl, sendToHolded } from "@/lib/apiClient";
 import type { FichaTecnica } from "@/lib/types";
 import { Button, inputStyleSm } from "./ui";
@@ -64,7 +64,9 @@ export default function CotizadorPanel({
           const row = rows.find((r) => r.id === c.itemId);
           if (!row) return null;
           const { precioCoste, precioVenta } = priceLine(row.precio_unitario, c.markup);
-          const matchedFichas = fichas.filter((f) => matchesFicha(f, row));
+          // Si hay varias fichas del mismo producto, solo la más reciente (fecha/versión del documento)
+          const actual = masReciente(fichas.filter((f) => matchesFicha(f, row)));
+          const matchedFichas = actual ? [actual] : [];
           return { ...row, cantidad: c.cantidad, markup: Number(c.markup) || 0, precioCoste, precioVenta, matchedFichas };
         })
         .filter((r): r is NonNullable<typeof r> => r !== null),

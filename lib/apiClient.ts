@@ -154,6 +154,8 @@ export interface CreateFichaInput {
   modelo: string | null;
   nombre_archivo: string;
   storage_path: string;
+  fecha_documento?: string | null;
+  version?: string | null;
 }
 
 export async function createFicha(input: CreateFichaInput): Promise<FichaTecnica> {
@@ -171,6 +173,8 @@ export interface UpdateFichaInput {
   marca?: string | null;
   modelo?: string | null;
   notas?: string | null;
+  fecha_documento?: string | null;
+  version?: string | null;
 }
 
 export async function updateFicha(id: string, input: UpdateFichaInput): Promise<FichaTecnica> {
@@ -198,6 +202,8 @@ export interface FichaMetadata {
   tipo_producto: string | null;
   marca: string | null;
   modelo: string | null;
+  fecha_documento?: string | null;
+  version?: string | null;
 }
 
 /** Pide a la IA que rellene categoría/tipo/marca/modelo a partir del PDF ya subido. */

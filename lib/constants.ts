@@ -12,8 +12,12 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.2.0";
+export const APP_VERSION = "4.3.0";
 export const CHANGELOG: { version: string; desc: string }[] = [
+  {
+    version: "4.3.0",
+    desc: "Fichas técnicas: la IA lee la fecha y versión de cada PDF; si hay varias del mismo producto, el cotizador da siempre la más reciente y las anteriores salen marcadas y ocultas. Marketing: qué ventas trae Google Ads (oportunidades reales, coste por oportunidad y por venta, retorno por campaña)",
+  },
   {
     version: "4.2.0",
     desc: "Entrar con Google: cada persona entra con su cuenta de trabajo (lista de acceso DARSENA_ACCESO). Hoy muestra lo tuyo, las tareas guardan quién las marcó y el asistente sabe con quién habla. Tareas de Hoy marcables como hechas",
@@ -179,7 +183,9 @@ Analiza el PDF adjunto y devuelve ÚNICAMENTE un objeto JSON válido, sin texto 
   "categoria": "DEBE ser EXACTAMENTE uno de estos valores textuales, sin variaciones: \\"Muelle de carga\\", \\"Minidock\\", \\"Puerta seccional\\", \\"Puerta rápida\\", \\"Puerta cortafuegos\\", \\"Accesorio muelle de carga\\", \\"Accesorio puerta seccional\\", \\"Accesorio puerta rápida\\", \\"Accesorio puerta cortafuegos\\", \\"Transporte\\", \\"Instalación\\"",
   "tipo_producto": "ej. puerta rápida, puerta seccional, puerta cortafuegos, dock leveler, minidock, dock shelter, accesorio, u otro, o null si no se puede determinar",
   "marca": "fabricante o marca del producto tal como aparece en el documento (normalmente en el logo o cabecera de la ficha), o null si no aparece",
-  "modelo": "modelo o referencia comercial del producto, o null si no aparece"
+  "modelo": "modelo o referencia comercial del producto, o null si no aparece",
+  "fecha_documento": "fecha de edición, revisión o actualización del propio documento en formato aaaa-mm-dd (si solo aparece mes y año, aaaa-mm; si solo el año, aaaa), o null si no aparece. Búscala en el pie, la cabecera, la portada o junto a la referencia del documento. No uses fechas de ensayos o certificados si hay una fecha de edición del documento",
+  "version": "versión, revisión o edición del documento tal como aparece (ej. \\"v07\\", \\"Rev. 3\\", \\"Ed. 2024\\"), o null si no aparece"
 }
 
 Reglas para asignar "categoria" (aplícalas siempre, no la dejes vacía si puedes inferirla):

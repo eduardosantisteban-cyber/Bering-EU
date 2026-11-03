@@ -113,6 +113,8 @@ export interface FichaMetadata {
   tipo_producto: string | null;
   marca: string | null;
   modelo: string | null;
+  fecha_documento: string | null;
+  version: string | null;
 }
 
 async function extractFichaMetadataOnce(base64Pdf: string): Promise<FichaMetadata> {
@@ -123,6 +125,8 @@ async function extractFichaMetadataOnce(base64Pdf: string): Promise<FichaMetadat
     tipo_producto: parsed.tipo_producto || null,
     marca: parsed.marca || null,
     modelo: parsed.modelo || null,
+    fecha_documento: /^\d{4}(-\d{2}){0,2}$/.test(String(parsed.fecha_documento || "")) ? String(parsed.fecha_documento) : null,
+    version: parsed.version ? String(parsed.version).slice(0, 40) : null,
   };
 }
 
