@@ -49,7 +49,7 @@ const NOMBRE_INCIDENCIA: Record<IncidenciaFin["tipo"], string> = {
 export default function FinanzasPage() {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sinAcceso, setSinAcceso] = useState(false);
+  const [sinAcceso, setSinAcceso] = useState<{ email: string | null } | null>(null);
   const [cargando, setCargando] = useState(true);
   const [mes, setMes] = useState(""); // "" = todos los meses
   const [filtroTipo, setFiltroTipo] = useState<"" | TipoDoc>("");
@@ -59,7 +59,8 @@ export default function FinanzasPage() {
     try {
       const r = await fetch("/api/finanzas", { cache: "no-store" });
       if (r.status === 403) {
-        setSinAcceso(true);
+        const b = await r.json().catch(() => null);
+        setSinAcceso({ email: b && typeof b.email === "string" ? b.email : null });
         return;
       }
       const b = await r.json();
@@ -108,7 +109,17 @@ export default function FinanzasPage() {
           <div className="mx-auto mt-16 max-w-md rounded-lg border border-[#e2e0dc] bg-white p-6 text-center">
             <Lock className="mx-auto text-[#606060]" size={22} />
             <p className="mt-3 font-semibold">Finanzas es privada</p>
-            <p className="mt-1 text-sm text-[#606060]">Solo la ve dirección, entrando con su cuenta de Google.</p>
+            <p className="mt-1 text-sm text-[#606060]">
+              {sinAcceso.email
+                ? `Has entrado en Dársena como ${sinAcceso.email}, que no tiene acceso a Finanzas.`
+                : "Has entrado en Dársena con la contraseña del equipo. Finanzas solo se ve entrando con tu cuenta de Google autorizada."}
+            </p>
+            <a
+              href="/api/auth/google?next=%2Ffinanzas"
+              className="mt-4 inline-block rounded-md bg-[#282828] px-4 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Entrar con Google
+            </a>
           </div>
         ) : error ? (
           <div className="rounded-lg border border-[#e83038]/30 bg-[#fdecec] p-4 text-sm text-[#8a1014]">

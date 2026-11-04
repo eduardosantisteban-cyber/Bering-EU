@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const cookie = (req.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(SESSION_COOKIE + "="));
   const yo = emailDeSesion(cookie ? decodeURIComponent(cookie.slice(SESSION_COOKIE.length + 1)) : null);
   if (!accesoFinanzas(yo)) {
-    return NextResponse.json({ error: "Sin acceso a Finanzas" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ error: "Sin acceso a Finanzas", email: yo }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 
   const db = supabaseAdmin();
