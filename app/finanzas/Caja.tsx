@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ExternalLink, Loader2, Undo2 } from "lucide-react";
+import { Check, ExternalLink, Loader2, RefreshCw, Undo2 } from "lucide-react";
 import { Tarjeta } from "../components/portal";
 import { enlaceDrive, importeCaja, nombreMes, type GanadoPendiente, type Movimiento } from "@/lib/finanzas";
 
@@ -103,7 +103,11 @@ export function Caja({
   pagos,
   recientes,
   onMarcar,
+  holded,
+  onSincronizar,
 }: {
+  holded: { cargando: boolean; texto: string; error?: boolean; noEnPanel?: string[] };
+  onSincronizar: () => void;
   cobros: Movimiento[];
   pagos: Movimiento[];
   /** Últimos marcados como cobrados/pagados en esta sesión, para poder deshacer */
@@ -115,8 +119,32 @@ export function Caja({
   return (
     <Tarjeta
       titulo="Caja: cobros y pagos pendientes"
-      sub="Importes con IVA, por fecha de vencimiento. «Sin comprobar» = el documento no dice si está pagado: márcalo cuando lo confirmes en el banco."
+      sub="Importes con IVA, por fecha de vencimiento. El estado de cobro y pago se toma de Holded (bancos conciliados); «sin comprobar» = no está en Holded o Holded no lo sabe."
+      accion={
+        <button
+          onClick={onSincronizar}
+          disabled={holded.cargando}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#e2e0dc] bg-white px-2.5 py-1 text-xs font-medium hover:bg-[#f7f7f5] disabled:opacity-50"
+        >
+          {holded.cargando ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sincronizar con Holded
+        </button>
+      }
     >
+      {(holded.texto || holded.cargando) && (
+        <p className={`mb-3 text-xs ${holded.error ? "text-[#b3161b]" : "text-[#606060]"}`}>
+          {holded.cargando ? "Leyendo cobros y pagos en Holded…" : "Holded: " + holded.texto}
+        </p>
+      )}
+      {!!holded.noEnPanel?.length && (
+        <details className="mb-3 rounded-md border border-[#f0d9a8] bg-[#fff8e8] px-3 py-2 text-xs text-[#7a4a00]">
+          <summary className="cursor-pointer font-medium">{holded.noEnPanel.length} facturas de venta de 2026 están en Holded pero no en el panel (falta el PDF en Drive)</summary>
+          <ul className="mt-1 list-disc pl-5">
+            {holded.noEnPanel.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Resumen label="Por cobrar" valor={suma(cobros)} n={cobros.length} />
         <Resumen label="Cobros vencidos" valor={suma(vencidos(cobros))} n={vencidos(cobros).length} alerta />

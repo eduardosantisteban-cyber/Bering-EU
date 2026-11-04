@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Loader2, Lock } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
 import { Barras, Cargando, Kpi, Tarjeta, usePortalData } from "../components/portal";
@@ -108,6 +108,33 @@ export default function FinanzasPage() {
     await cargar();
   }
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  // Estado de cobros y pagos desde Holded (bancos conciliados allí): al abrir la página y con el botón «Sincronizar».
+  const [holded, setHolded] = useState<{ cargando: boolean; texto: string; error?: boolean; noEnPanel?: string[] }>({ cargando: false, texto: "" });
+  const sincronizarHolded = useCallback(async () => {
+    setHolded((h) => ({ ...h, cargando: true }));
+    try {
+      const r = await fetch("/api/finanzas/holded", { method: "POST" });
+      const b = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(b?.error || `Error ${r.status}`);
+      const partes = [
+        `${b.cruzadas} facturas cruzadas con Holded`,
+        b.actualizadas ? `${b.actualizadas} actualizadas` : "sin cambios",
+        b.conflictos?.length ? `${b.conflictos.length} con diferencias: ${b.conflictos.join("; ")}` : "",
+      ].filter(Boolean);
+      setHolded({ cargando: false, texto: partes.join(" · "), noEnPanel: b.ventasNoEnPanel || [] });
+      if (b.actualizadas) await cargar();
+    } catch (e) {
+      setHolded({ cargando: false, texto: "No se pudo leer Holded: " + (e as Error).message, error: true });
+    }
+  }, [cargar]);
+  const holdedPedido = useRef(false);
+  useEffect(() => {
+    if (!datos || holdedPedido.current) return;
+    holdedPedido.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronización inicial con Holded
+    sincronizarHolded();
+  }, [datos, sincronizarHolded]);
   function alertaError(m: string) {
     setErrorAccion(m);
     setTimeout(() => setErrorAccion(null), 6000);
@@ -205,7 +232,7 @@ export default function FinanzasPage() {
               <p className="rounded-md border border-[#e83038]/30 bg-[#fdecec] px-3 py-2 text-sm text-[#8a1014]">No se pudo guardar: {errorAccion}</p>
             )}
 
-            <Caja cobros={caja.cobros} pagos={caja.pagos} recientes={recientes} onMarcar={marcarPagado} />
+            <Caja cobros={caja.cobros} pagos={caja.pagos} recientes={recientes} onMarcar={marcarPagado} holded={holded} onSincronizar={sincronizarHolded} />
 
             <GanadoSinFacturar filas={ganado} cargando={portal.loading} error={portal.error} />
 
