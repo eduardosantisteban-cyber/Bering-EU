@@ -7,7 +7,9 @@ import { accesoFinanzas, emailDeSesion, SESSION_COOKIE } from "@/lib/auth";
 // fin_documentos por número y total, y actualiza «pagado»:
 //   · Holded dice pagada            → pagado = true
 //   · Holded dice pendiente/parcial → pagado = false, solo si estaba sin comprobar (no pisa un «pagado» marcado a mano)
-// Devuelve un resumen, incluidas las facturas de Holded que no están en el panel.
+// Devuelve un resumen, incluidas las facturas de Holded que no están en el panel y los conflictos
+// (cobrada/pagada en el panel, pendiente en Holded), salvo los que Eduardo ya confirmó a mano.
+// GET → saldo de las cuentas de tesorería de Holded (bancos), para la previsión de caja.
 
 const BASE = "https://api.holded.com/api/invoicing/v1";
 
@@ -21,6 +23,16 @@ interface DocHolded {
   status?: number | string;
   paymentsPending?: number;
   paymentsTotal?: number;
+}
+
+export interface ConflictoHolded {
+  id: string;
+  tipo: string;
+  contraparte: string;
+  numero: string;
+  total: number | null;
+  pendienteHolded: number | null;
+  vencimientoHolded: string | null;
 }
 
 const norm = (s: unknown) => String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -42,10 +54,41 @@ async function leer(tipo: "invoice" | "purchase", key: string, desde: number, ha
   return Array.isArray(b) ? (b as DocHolded[]) : [];
 }
 
-export async function POST(req: Request) {
+function yoDe(req: Request) {
   const cookie = (req.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(SESSION_COOKIE + "="));
-  const yo = emailDeSesion(cookie ? decodeURIComponent(cookie.slice(SESSION_COOKIE.length + 1)) : null);
-  if (!accesoFinanzas(yo)) return NextResponse.json({ error: "Sin acceso a Finanzas" }, { status: 403 });
+  return emailDeSesion(cookie ? decodeURIComponent(cookie.slice(SESSION_COOKIE.length + 1)) : null);
+}
+
+interface CuentaHolded {
+  id?: string;
+  name?: string;
+  type?: string;
+  balance?: number | string;
+  iban?: string;
+  bankname?: string;
+}
+
+export async function GET(req: Request) {
+  if (!accesoFinanzas(yoDe(req))) return NextResponse.json({ error: "Sin acceso a Finanzas" }, { status: 403 });
+  const key = (process.env.HOLDED_API_KEY || "").trim();
+  if (!key) return NextResponse.json({ error: "Falta HOLDED_API_KEY en Vercel" }, { status: 500 });
+  const r = await fetch(`${BASE}/treasury`, { headers: { key, accept: "application/json" }, cache: "no-store" });
+  if (!r.ok) return NextResponse.json({ error: `Holded tesorería: ${r.status} ${(await r.text()).slice(0, 200)}` }, { status: 502 });
+  const b = await r.json();
+  const cuentas = (Array.isArray(b) ? (b as CuentaHolded[]) : [])
+    .map((c) => ({
+      id: String(c.id || ""),
+      nombre: String(c.name || c.bankname || "Cuenta"),
+      tipo: String(c.type || ""),
+      iban4: c.iban ? String(c.iban).replace(/\s/g, "").slice(-4) : null,
+      saldo: Number(c.balance ?? NaN),
+    }))
+    .filter((c) => isFinite(c.saldo));
+  return NextResponse.json({ cuentas, leido: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function POST(req: Request) {
+  if (!accesoFinanzas(yoDe(req))) return NextResponse.json({ error: "Sin acceso a Finanzas" }, { status: 403 });
   const key = (process.env.HOLDED_API_KEY || "").trim();
   if (!key) return NextResponse.json({ error: "Falta HOLDED_API_KEY en Vercel" }, { status: 500 });
 
@@ -61,18 +104,18 @@ export async function POST(req: Request) {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("fin_documentos")
-    .select("id,tipo,contraparte,numero,total,pagado,notas")
+    .select("id,tipo,contraparte,numero,total,pagado,pago_confirmado_manual,notas")
     .eq("sociedad", "Bering ES")
     .in("tipo", ["venta", "cogs", "fijo", "variable"]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const docs = (data || []) as { id: string; tipo: string; contraparte: string; numero: string; total: number | string | null; pagado: boolean | null; notas: string | null }[];
+  const docs = (data || []) as { id: string; tipo: string; contraparte: string; numero: string; total: number | string | null; pagado: boolean | null; pago_confirmado_manual: boolean | null; notas: string | null }[];
 
   // Facturas anuladas en Holded (registradas como incidencias «anulada:F26xxxx»): no cuentan ni se avisan.
   const { data: anul } = await db.from("fin_incidencias").select("clave").like("clave", "anulada:%");
   const anuladas = new Set((anul || []).map((r: { clave: string }) => norm(r.clave.slice("anulada:".length))));
 
   const hoy = new Date().toISOString().slice(0, 10);
-  const resumen = { ventasHolded: ventas.length, comprasHolded: compras.length, cruzadas: 0, actualizadas: 0, conflictos: [] as string[], ventasNoEnPanel: [] as string[], comprasNoEnPanel: 0 };
+  const resumen = { ventasHolded: ventas.length, comprasHolded: compras.length, cruzadas: 0, actualizadas: 0, conflictos: [] as ConflictoHolded[], confirmadosAMano: 0, ventasNoEnPanel: [] as string[], comprasNoEnPanel: 0 };
 
   async function cruzar(lista: DocHolded[], esVenta: boolean) {
     for (const h of lista) {
@@ -91,7 +134,17 @@ export async function POST(req: Request) {
       const e = estadoHolded(h);
       if (e === null) continue;
       if (e === false && d.pagado === true) {
-        resumen.conflictos.push(`${d.contraparte} ${d.numero}: marcada pagada en el panel, pendiente en Holded`);
+        if (d.pago_confirmado_manual) resumen.confirmadosAMano++;
+        else
+          resumen.conflictos.push({
+            id: d.id,
+            tipo: d.tipo,
+            contraparte: d.contraparte,
+            numero: d.numero,
+            total: d.total === null ? null : Number(d.total),
+            pendienteHolded: typeof h.paymentsPending === "number" ? h.paymentsPending : null,
+            vencimientoHolded: h.dueDate ? new Date(h.dueDate * 1000).toISOString().slice(0, 10) : null,
+          });
         continue;
       }
       if (d.pagado === e) continue;

@@ -13,12 +13,13 @@ function quienEs(req: Request): string | null {
 
 /**
  * Marcar un documento como cobrado/pagado (o deshacerlo) desde el panel.
- * PATCH { id, pagado: true | false | null } — solo FINANZAS_ACCESO. Deja constancia en «notas».
+ * PATCH { id, pagado: true | false | null, confirmarManual?: boolean } — solo FINANZAS_ACCESO. Deja constancia en «notas».
+ * confirmarManual = true: «está cobrada/pagada aunque Holded diga pendiente» → la sincronización deja de marcarlo como conflicto.
  */
 export async function PATCH(req: Request) {
   const yo = quienEs(req);
   if (!accesoFinanzas(yo)) return NextResponse.json({ error: "Sin acceso a Finanzas" }, { status: 403 });
-  let body: { id?: unknown; pagado?: unknown };
+  let body: { id?: unknown; pagado?: unknown; confirmarManual?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -32,9 +33,10 @@ export async function PATCH(req: Request) {
   const db = supabaseAdmin();
   const { data: actual, error: e1 } = await db.from("fin_documentos").select("notas").eq("id", id).single();
   if (e1 || !actual) return NextResponse.json({ error: e1?.message || "No encontrado" }, { status: 404 });
-  const marca = `${body.pagado === true ? "Marcado cobrado/pagado" : body.pagado === false ? "Marcado pendiente" : "Marcado sin comprobar"} en el panel por ${yo} el ${new Date().toISOString().slice(0, 10)}.`;
+  const manual = body.pagado === true && body.confirmarManual === true;
+  const marca = `${manual ? "Confirmado cobrado/pagado (aunque Holded diga pendiente)" : body.pagado === true ? "Marcado cobrado/pagado" : body.pagado === false ? "Marcado pendiente" : "Marcado sin comprobar"} en el panel por ${yo} el ${new Date().toISOString().slice(0, 10)}.`;
   const notas = [String((actual as { notas: string | null }).notas || "").trim(), marca].filter(Boolean).join(" ").slice(-2000);
-  const { error } = await db.from("fin_documentos").update({ pagado: body.pagado, notas, actualizado: new Date().toISOString() }).eq("id", id);
+  const { error } = await db.from("fin_documentos").update({ pagado: body.pagado, pago_confirmado_manual: manual, notas, actualizado: new Date().toISOString() }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
@@ -48,11 +50,11 @@ export async function GET(req: Request) {
   const db = supabaseAdmin();
   const [docs, incs] = await Promise.all([
     db.from("fin_documentos")
-      .select("id,sociedad,tipo,categoria,contraparte,numero,fecha,mes,base,iva,total,moneda,isp,ticket,beuq,hito,vencimiento,pagado,drive_id,notas")
+      .select("id,sociedad,tipo,categoria,contraparte,numero,fecha,mes,base,iva,total,moneda,isp,ticket,beuq,hito,vencimiento,pagado,pago_confirmado_manual,drive_id,notas")
       .order("fecha", { ascending: false })
       .limit(5000),
     db.from("fin_incidencias")
-      .select("id,creado,mes,tipo,descripcion,beuq,importe,drive_id,resuelto")
+      .select("id,creado,mes,tipo,descripcion,beuq,importe,drive_id,resuelto,respuesta,respondido_en")
       .order("creado", { ascending: false })
       .limit(1000),
   ]);

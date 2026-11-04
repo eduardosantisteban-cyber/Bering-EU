@@ -5,6 +5,7 @@ import { ExternalLink, Loader2, Lock } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
 import { Barras, Cargando, Kpi, Tarjeta, usePortalData } from "../components/portal";
 import { Caja, GanadoSinFacturar } from "./Caja";
+import { ConflictosHolded, Pendientes, PrevisionTesoreria, type Conflicto, type CuentaBanco } from "./Tesoreria";
 import {
   SOCIEDAD_PRINCIPAL, cobrosYPagos, enlaceDrive, ganadoSinFacturar, gastosPorCategoria, importe, nombreMes, proyectos, pygMensual,
   type DocFin, type FilaPyG, type IncidenciaFin, type TipoDoc,
@@ -111,6 +112,7 @@ export default function FinanzasPage() {
 
   // Estado de cobros y pagos desde Holded (bancos conciliados allí): al abrir la página y con el botón «Sincronizar».
   const [holded, setHolded] = useState<{ cargando: boolean; texto: string; error?: boolean; noEnPanel?: string[] }>({ cargando: false, texto: "" });
+  const [conflictos, setConflictos] = useState<Conflicto[]>([]);
   const sincronizarHolded = useCallback(async () => {
     setHolded((h) => ({ ...h, cargando: true }));
     try {
@@ -120,9 +122,11 @@ export default function FinanzasPage() {
       const partes = [
         `${b.cruzadas} facturas cruzadas con Holded`,
         b.actualizadas ? `${b.actualizadas} actualizadas` : "sin cambios",
-        b.conflictos?.length ? `${b.conflictos.length} con diferencias: ${b.conflictos.join("; ")}` : "",
+        b.conflictos?.length ? `${b.conflictos.length} con diferencias (ver arriba)` : "",
+        b.confirmadosAMano ? `${b.confirmadosAMano} confirmadas a mano aunque Holded diga pendiente` : "",
       ].filter(Boolean);
       setHolded({ cargando: false, texto: partes.join(" · "), noEnPanel: b.ventasNoEnPanel || [] });
+      setConflictos(Array.isArray(b.conflictos) ? (b.conflictos as Conflicto[]) : []);
       if (b.actualizadas) await cargar();
     } catch (e) {
       setHolded({ cargando: false, texto: "No se pudo leer Holded: " + (e as Error).message, error: true });
@@ -135,6 +139,53 @@ export default function FinanzasPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronización inicial con Holded
     sincronizarHolded();
   }, [datos, sincronizarHolded]);
+  async function resolverConflicto(c: Conflicto, quedarseConHolded: boolean) {
+    const r = await fetch("/api/finanzas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(quedarseConHolded ? { id: c.id, pagado: false } : { id: c.id, pagado: true, confirmarManual: true }),
+    });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) {
+      alertaError(b?.error || `Error ${r.status}`);
+      return;
+    }
+    setConflictos((prev) => prev.filter((x) => x.id !== c.id));
+    await cargar();
+  }
+
+  async function guardarPendiente(id: string, cambios: { respuesta?: string; resuelto?: boolean }) {
+    const r = await fetch("/api/finanzas/incidencias", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...cambios }),
+    });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) {
+      alertaError(b?.error || `Error ${r.status}`);
+      return false;
+    }
+    await cargar();
+    return true;
+  }
+
+  // Saldo de los bancos en Holded, para la previsión de tesorería
+  const [bancos, setBancos] = useState<{ cargando: boolean; cuentas: CuentaBanco[] | null; error: string | null }>({ cargando: false, cuentas: null, error: null });
+  const bancosPedido = useRef(false);
+  useEffect(() => {
+    if (!datos || bancosPedido.current) return;
+    bancosPedido.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lectura inicial del saldo de los bancos
+    setBancos((b) => ({ ...b, cargando: true }));
+    fetch("/api/finanzas/holded", { cache: "no-store" })
+      .then(async (r) => {
+        const b = await r.json().catch(() => null);
+        if (!r.ok) throw new Error(b?.error || `Error ${r.status}`);
+        setBancos({ cargando: false, cuentas: (b?.cuentas || []) as CuentaBanco[], error: null });
+      })
+      .catch((e) => setBancos({ cargando: false, cuentas: null, error: (e as Error).message }));
+  }, [datos]);
+
   function alertaError(m: string) {
     setErrorAccion(m);
     setTimeout(() => setErrorAccion(null), 6000);
@@ -225,14 +276,18 @@ export default function FinanzasPage() {
               <Kpi label="Margen bruto" valor={eur2(total.margenBruto)} sub={total.ventas ? pct1(total.margenBruto / total.ventas) + " sobre ventas" : undefined} alerta={total.margenBruto < 0} />
               <Kpi label="Gastos de estructura" valor={eur2(total.fijos + total.variables + total.personal)} sub="fijos + variables + personal" />
               <Kpi label="Resultado operativo" valor={eur2(total.resultado)} alerta={total.resultado < 0} />
-              <Kpi label="Pendientes abiertos" valor={String(abiertas.length)} sub="ver lista abajo" alerta={abiertas.length > 0} />
+              <Kpi label="Pendientes abiertos" valor={String(abiertas.length)} sub={`${abiertas.filter((i) => !i.respuesta).length} sin responder`} alerta={abiertas.length > 0} />
             </div>
 
             {errorAccion && (
               <p className="rounded-md border border-[#e83038]/30 bg-[#fdecec] px-3 py-2 text-sm text-[#8a1014]">No se pudo guardar: {errorAccion}</p>
             )}
 
+            <ConflictosHolded conflictos={conflictos} onResolver={resolverConflicto} />
+
             <Caja cobros={caja.cobros} pagos={caja.pagos} recientes={recientes} onMarcar={marcarPagado} holded={holded} onSincronizar={sincronizarHolded} />
+
+            <PrevisionTesoreria docs={datos.documentos} cuentas={bancos.cuentas} cargando={bancos.cargando} error={bancos.error} />
 
             <GanadoSinFacturar filas={ganado} cargando={portal.loading} error={portal.error} />
 
@@ -286,23 +341,9 @@ export default function FinanzasPage() {
               )}
             </Tarjeta>
 
-            <Tarjeta titulo="Pendientes" sub="De la revisión mensual del CFO: lo que falta o no cuadra">
-              {abiertas.length === 0 ? (
-                <p className="text-sm text-[#606060]">Nada pendiente.</p>
-              ) : (
-                <ul className="flex flex-col divide-y divide-[#f1f1ef]">
-                  {abiertas.map((i) => (
-                    <li key={i.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-sm">
-                      <span className="rounded bg-[#f1f1ef] px-1.5 py-0.5 text-xs font-medium text-[#606060]">{NOMBRE_INCIDENCIA[i.tipo] || i.tipo}</span>
-                      <span className="min-w-0 flex-1">{i.descripcion}</span>
-                      {i.beuq && <span className="text-xs text-[#606060]">{i.beuq}</span>}
-                      {i.importe !== null && <span className="text-xs tabular-nums text-[#606060]">{eur2(i.importe)}</span>}
-                      <EnlaceDrive id={i.drive_id} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Tarjeta>
+            <div id="pendientes">
+              <Pendientes incidencias={datos.incidencias} nombres={NOMBRE_INCIDENCIA} onGuardar={guardarPendiente} />
+            </div>
 
             <Tarjeta
               titulo="Documentos"

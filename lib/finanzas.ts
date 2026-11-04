@@ -22,6 +22,8 @@ export interface DocFin {
   hito: string | null;
   vencimiento: string | null;
   pagado: boolean | null;
+  /** Eduardo confirmó a mano que está cobrado/pagado aunque Holded diga pendiente */
+  pago_confirmado_manual?: boolean;
   drive_id: string | null;
   notas: string | null;
 }
@@ -36,6 +38,9 @@ export interface IncidenciaFin {
   importe: number | null;
   drive_id: string | null;
   resuelto: boolean;
+  /** Respuesta de Eduardo desde el panel; el agente CFO la aplica en la siguiente revisión */
+  respuesta?: string | null;
+  respondido_en?: string | null;
 }
 
 export const SOCIEDAD_PRINCIPAL = "Bering ES";
@@ -248,4 +253,132 @@ export function ganadoSinFacturar(
     out.push({ clave: k, codigo: o.codigo, empresa: o.empresa, fechaGanado: o.fechaEstado, importe: o.importe, facturado: f, pendiente });
   }
   return out.sort((a, b) => b.pendiente - a.pendiente);
+}
+
+// ── Previsión de tesorería ──
+
+export interface SemanaCaja {
+  /** Lunes de la semana (ISO) */
+  inicio: string;
+  cobros: number;
+  pagos: number;
+  /** Nóminas y gastos fijos recurrentes que aún no tienen factura */
+  recurrentes: number;
+  saldoFinal: number;
+  detalle: { texto: string; importe: number; clase: "cobro" | "pago" | "recurrente"; vencido?: boolean }[];
+}
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const lunes = (d: Date) => {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+};
+const mesAnterior = (mes: string, n: number) => {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(a, m - 1 - n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+/**
+ * Gastos que se repiten cada mes y todavía no tienen factura en los meses que vienen:
+ *  · Personal: el coste de nómina del último mes cargado, el último día de cada mes.
+ *  · Fijos: proveedores con factura en al menos 2 de los 3 meses anteriores al actual; se repite el último
+ *    importe (con IVA) el mismo día del mes.
+ * Solo se proyecta si ese mes aún no tiene el documento.
+ */
+export function recurrentesFuturos(docs: DocFin[], hoy: Date, hasta: Date): { fecha: string; texto: string; importe: number }[] {
+  const es = docs.filter((d) => d.sociedad === SOCIEDAD_PRINCIPAL && d.moneda === "EUR");
+  const mesHoy = iso(hoy).slice(0, 7);
+  const previos = new Set([1, 2, 3].map((n) => mesAnterior(mesHoy, n)));
+  const out: { fecha: string; texto: string; importe: number }[] = [];
+  const meses: string[] = [];
+  for (let k = 0; k < 6; k++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() + k, 1);
+    if (d > hasta) break;
+    meses.push(iso(d).slice(0, 7));
+  }
+
+  // Personal (coste empresa: bruto + Seguridad Social)
+  const personal = es.filter((d) => d.tipo === "personal").sort((a, b) => b.mes.localeCompare(a.mes));
+  if (personal.length) {
+    const ultimoMes = personal[0].mes;
+    const importeMes = personal.filter((d) => d.mes === ultimoMes).reduce((t, d) => t + importeCaja(d), 0);
+    const cargados = new Set(personal.map((d) => d.mes));
+    for (const m of meses) {
+      if (cargados.has(m)) continue;
+      const [a, mm] = m.split("-").map(Number);
+      const f = iso(new Date(a, mm, 0));
+      if (f >= iso(hoy) && f <= iso(hasta)) out.push({ fecha: f, texto: "Nóminas y Seguridad Social (estimado)", importe: importeMes });
+    }
+  }
+
+  // Fijos recurrentes por proveedor
+  const porProveedor = new Map<string, DocFin[]>();
+  for (const d of es) {
+    if (d.tipo !== "fijo") continue;
+    const k = d.contraparte.trim().toLowerCase();
+    if (!porProveedor.has(k)) porProveedor.set(k, []);
+    porProveedor.get(k)!.push(d);
+  }
+  for (const lista of porProveedor.values()) {
+    const mesesCon = new Set(lista.map((d) => d.mes));
+    if ([...previos].filter((m) => mesesCon.has(m)).length < 2) continue;
+    const ultimo = [...lista].sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+    const dia = Number(ultimo.fecha.slice(8, 10)) || 1;
+    for (const m of meses) {
+      if (mesesCon.has(m)) continue;
+      const [a, mm] = m.split("-").map(Number);
+      const f = iso(new Date(a, mm - 1, Math.min(dia, new Date(a, mm, 0).getDate())));
+      if (f >= iso(hoy) && f <= iso(hasta)) out.push({ fecha: f, texto: `${ultimo.contraparte} (cuota mensual estimada)`, importe: importeCaja(ultimo) });
+    }
+  }
+  return out.sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+/**
+ * Previsión semanal de caja: saldo inicial (bancos en Holded) + cobros − pagos pendientes − recurrentes.
+ * Lo vencido y no cobrado/pagado se pone en la primera semana (marcado como vencido).
+ */
+export function previsionCaja(docs: DocFin[], saldoInicial: number, hoy: Date, semanas = 13): SemanaCaja[] {
+  const { cobros, pagos } = cobrosYPagos(docs, hoy);
+  const l0 = lunes(hoy);
+  const fin = new Date(l0);
+  fin.setDate(fin.getDate() + 7 * semanas - 1);
+  const filas: SemanaCaja[] = [];
+  for (let k = 0; k < semanas; k++) {
+    const d = new Date(l0);
+    d.setDate(d.getDate() + 7 * k);
+    filas.push({ inicio: iso(d), cobros: 0, pagos: 0, recurrentes: 0, saldoFinal: 0, detalle: [] });
+  }
+  const semanaDe = (fecha: string) => {
+    const k = Math.floor((new Date(fecha + "T00:00:00").getTime() - l0.getTime()) / (7 * DIA));
+    return k < 0 ? 0 : k;
+  };
+  for (const m of cobros) {
+    const k = semanaDe(m.fechaCaja);
+    if (k >= semanas) continue;
+    const v = importeCaja(m.doc);
+    filas[k].cobros += v;
+    filas[k].detalle.push({ texto: `${m.doc.contraparte} ${m.doc.numero}`, importe: v, clase: "cobro", vencido: m.diasVencido > 0 });
+  }
+  for (const m of pagos) {
+    const k = semanaDe(m.fechaCaja);
+    if (k >= semanas) continue;
+    const v = importeCaja(m.doc);
+    filas[k].pagos += v;
+    filas[k].detalle.push({ texto: `${m.doc.contraparte} ${m.doc.numero}`, importe: -v, clase: "pago", vencido: m.diasVencido > 0 });
+  }
+  for (const r of recurrentesFuturos(docs, hoy, fin)) {
+    const k = semanaDe(r.fecha);
+    if (k >= semanas) continue;
+    filas[k].recurrentes += r.importe;
+    filas[k].detalle.push({ texto: r.texto, importe: -r.importe, clase: "recurrente" });
+  }
+  let saldo = saldoInicial;
+  for (const f of filas) {
+    saldo += f.cobros - f.pagos - f.recurrentes;
+    f.saldoFinal = saldo;
+  }
+  return filas;
 }
