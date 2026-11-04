@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink, Loader2, Lock } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
-import { Barras, Cargando, Kpi, Tarjeta } from "../components/portal";
+import { Barras, Cargando, Kpi, Tarjeta, usePortalData } from "../components/portal";
+import { Caja, GanadoSinFacturar } from "./Caja";
 import {
-  SOCIEDAD_PRINCIPAL, enlaceDrive, gastosPorCategoria, importe, nombreMes, proyectos, pygMensual,
+  SOCIEDAD_PRINCIPAL, cobrosYPagos, enlaceDrive, ganadoSinFacturar, gastosPorCategoria, importe, nombreMes, proyectos, pygMensual,
   type DocFin, type FilaPyG, type IncidenciaFin, type TipoDoc,
 } from "@/lib/finanzas";
 
@@ -78,6 +79,39 @@ export default function FinanzasPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial de datos
     cargar();
   }, [cargar]);
+
+  const portal = usePortalData();
+  const [recientes, setRecientes] = useState<{ id: string; texto: string }[]>([]);
+  const caja = useMemo(() => (datos ? cobrosYPagos(datos.documentos, new Date()) : { cobros: [], pagos: [] }), [datos]);
+  const ganado = useMemo(
+    () => (datos && portal.data ? ganadoSinFacturar(portal.data.oportunidades, datos.documentos) : []),
+    [datos, portal.data],
+  );
+
+  async function marcarPagado(id: string, pagado: boolean | null) {
+    const r = await fetch("/api/finanzas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, pagado }),
+    });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) {
+      alertaError(b?.error || `Error ${r.status}`);
+      return;
+    }
+    const d = datos?.documentos.find((x) => x.id === id);
+    setRecientes((prev) =>
+      pagado === true && d
+        ? [{ id, texto: `${d.contraparte} ${d.numero}` }, ...prev.filter((x) => x.id !== id)].slice(0, 5)
+        : prev.filter((x) => x.id !== id),
+    );
+    await cargar();
+  }
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  function alertaError(m: string) {
+    setErrorAccion(m);
+    setTimeout(() => setErrorAccion(null), 6000);
+  }
 
   const pyg = useMemo(() => (datos ? pygMensual(datos.documentos) : []), [datos]);
   const meses = useMemo(() => pyg.map((f) => f.mes), [pyg]);
@@ -166,6 +200,14 @@ export default function FinanzasPage() {
               <Kpi label="Resultado operativo" valor={eur2(total.resultado)} alerta={total.resultado < 0} />
               <Kpi label="Pendientes abiertos" valor={String(abiertas.length)} sub="ver lista abajo" alerta={abiertas.length > 0} />
             </div>
+
+            {errorAccion && (
+              <p className="rounded-md border border-[#e83038]/30 bg-[#fdecec] px-3 py-2 text-sm text-[#8a1014]">No se pudo guardar: {errorAccion}</p>
+            )}
+
+            <Caja cobros={caja.cobros} pagos={caja.pagos} recientes={recientes} onMarcar={marcarPagado} />
+
+            <GanadoSinFacturar filas={ganado} cargando={portal.loading} error={portal.error} />
 
             <Tarjeta titulo="Cuenta de resultados" sub="Base imponible por mes de factura. Los COGS se imputan al mes de la factura del proveedor.">
               <TablaPyG filas={pyg} />

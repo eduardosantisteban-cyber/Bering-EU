@@ -157,3 +157,95 @@ export function nombreMes(mes: string): string {
 }
 
 export const enlaceDrive = (id: string | null) => (id ? `https://drive.google.com/file/d/${encodeURIComponent(id)}/view` : null);
+
+// ── Caja: cobros y pagos pendientes ──
+
+export interface Movimiento {
+  doc: DocFin;
+  /** Fecha que cuenta para la caja: el vencimiento o, si no consta, la fecha de la factura (pago al contado) */
+  fechaCaja: string;
+  /** Días desde el vencimiento (positivo = vencido) */
+  diasVencido: number;
+  /** pagado === false: el documento dice que está pendiente · null: sin comprobar */
+  confirmadoPendiente: boolean;
+}
+
+const DIA = 86400000;
+
+function movimiento(d: DocFin, hoy: Date): Movimiento {
+  const fechaCaja = (d.vencimiento || d.fecha).slice(0, 10);
+  const dias = Math.floor((hoy.getTime() - new Date(fechaCaja + "T00:00:00").getTime()) / DIA);
+  return { doc: d, fechaCaja, diasVencido: dias, confirmadoPendiente: d.pagado === false };
+}
+
+/**
+ * Cobros: facturas de venta de Bering ES no marcadas como cobradas.
+ * Pagos: facturas de proveedor (COGS) no marcadas como pagadas, y gastos que el propio documento da por pendientes.
+ * Importes con IVA (lo que entra o sale de la cuenta). Ordenados por fecha de caja.
+ */
+export function cobrosYPagos(docs: DocFin[], hoy: Date): { cobros: Movimiento[]; pagos: Movimiento[] } {
+  const es = docs.filter((d) => d.sociedad === SOCIEDAD_PRINCIPAL && d.moneda === "EUR" && d.pagado !== true);
+  const orden = (a: Movimiento, b: Movimiento) => a.fechaCaja.localeCompare(b.fechaCaja);
+  return {
+    cobros: es.filter((d) => d.tipo === "venta").map((d) => movimiento(d, hoy)).sort(orden),
+    pagos: es
+      .filter((d) => d.tipo === "cogs" || ((d.tipo === "fijo" || d.tipo === "variable") && d.pagado === false))
+      .map((d) => movimiento(d, hoy))
+      .sort(orden),
+  };
+}
+
+/** Importe de caja de un documento: el total con IVA (o la base si no consta el total). */
+export const importeCaja = (d: Pick<DocFin, "total" | "base">) => Number(d.total ?? d.base ?? 0);
+
+// ── Ganado pendiente de facturar ──
+
+/** "BEUQ401-B" → "BEUQ401" · "MMQ943" / "MM943-E" → "MM943" */
+export function claveProyecto(codigo: string | null | undefined): string | null {
+  const m = String(codigo || "").toUpperCase().match(/(BEUQ|MMQ|MM)\s*0*(\d+)/);
+  if (!m) return null;
+  return (m[1] === "BEUQ" ? "BEUQ" : "MM") + m[2];
+}
+
+export interface GanadoPendiente {
+  clave: string;
+  codigo: string;
+  empresa: string;
+  fechaGanado: string | null;
+  importe: number;
+  facturado: number;
+  pendiente: number;
+}
+
+/**
+ * Oportunidades ganadas (desde `desde`) cuyo importe ofertado aún no está facturado del todo.
+ * `ops` viene de /api/portal (hoja Solicitudes + histórico de Holded).
+ */
+export function ganadoSinFacturar(
+  ops: { codigo: string; empresa: string; estado: string; fechaEstado: string | null; importe: number | null }[],
+  docs: DocFin[],
+  desde = "2026-01-01",
+): GanadoPendiente[] {
+  const facturado = new Map<string, number>();
+  for (const d of docs) {
+    if (d.tipo !== "venta" || d.sociedad !== SOCIEDAD_PRINCIPAL) continue;
+    const k = claveProyecto(d.beuq);
+    const v = importe(d);
+    if (k && v !== null) facturado.set(k, (facturado.get(k) || 0) + v);
+  }
+  const vistos = new Set<string>();
+  const out: GanadoPendiente[] = [];
+  for (const o of ops) {
+    if (o.estado !== "Ganado" || !o.importe || o.importe <= 0) continue;
+    if (o.fechaEstado && o.fechaEstado.slice(0, 10) < desde) continue;
+    const k = claveProyecto(o.codigo);
+    if (!k || vistos.has(k)) continue;
+    vistos.add(k);
+    const f = facturado.get(k) || 0;
+    const pendiente = o.importe - f;
+    // margen de redondeo: 1 % o 20 €
+    if (pendiente <= Math.max(20, o.importe * 0.01)) continue;
+    out.push({ clave: k, codigo: o.codigo, empresa: o.empresa, fechaGanado: o.fechaEstado, importe: o.importe, facturado: f, pendiente });
+  }
+  return out.sort((a, b) => b.pendiente - a.pendiente);
+}
