@@ -40,10 +40,15 @@ export interface IncidenciaFin {
 
 export const SOCIEDAD_PRINCIPAL = "Bering ES";
 
-/** Importe que cuenta: base imponible en EUR (null si no es EUR o no consta). */
-export function importe(d: Pick<DocFin, "base" | "moneda">): number | null {
-  if (d.moneda !== "EUR" || d.base === null || d.base === undefined) return null;
-  return Number(d.base);
+/**
+ * Importe que cuenta: base imponible en EUR. Si el documento no desglosa el IVA (tickets de Uber, taxi…),
+ * el IVA no es deducible y el gasto es el total. null si no es EUR o no consta ningún importe.
+ */
+export function importe(d: Pick<DocFin, "base" | "total" | "moneda">): number | null {
+  if (d.moneda !== "EUR") return null;
+  if (d.base !== null && d.base !== undefined) return Number(d.base);
+  if (d.total !== null && d.total !== undefined) return Number(d.total);
+  return null;
 }
 
 export interface FilaPyG {
@@ -95,13 +100,15 @@ export interface Proyecto {
   cogs: number;
   margen: number;
   margenPct: number | null;
-  estado: "completo" | "cogs_pendiente" | "sin_venta";
+  estado: "completo" | "cogs_pendiente" | "revisar" | "sin_venta";
   ultimaFecha: string;
 }
 
 /** Margen real por proyecto (BEUQ): ventas frente a COGS imputados. */
 export function proyectos(docs: DocFin[], incidencias: IncidenciaFin[]): Proyecto[] {
-  const pendientes = new Set(incidencias.filter((i) => !i.resuelto && i.tipo === "cogs_pendiente" && i.beuq).map((i) => i.beuq as string));
+  const abiertas = incidencias.filter((i) => !i.resuelto && i.beuq);
+  const pendientes = new Set(abiertas.filter((i) => i.tipo === "cogs_pendiente").map((i) => i.beuq as string));
+  const revisar = new Set(abiertas.map((i) => i.beuq as string));
   const porBeuq = new Map<string, Proyecto>();
   for (const d of docs) {
     if (!d.beuq || d.sociedad !== SOCIEDAD_PRINCIPAL || (d.tipo !== "venta" && d.tipo !== "cogs")) continue;
@@ -124,7 +131,7 @@ export function proyectos(docs: DocFin[], incidencias: IncidenciaFin[]): Proyect
   for (const p of lista) {
     p.margen = p.ventas - p.cogs;
     p.margenPct = p.ventas ? p.margen / p.ventas : null;
-    p.estado = !p.ventas ? "sin_venta" : pendientes.has(p.beuq) || !p.cogs ? "cogs_pendiente" : "completo";
+    p.estado = !p.ventas ? "sin_venta" : pendientes.has(p.beuq) || !p.cogs ? "cogs_pendiente" : revisar.has(p.beuq) ? "revisar" : "completo";
   }
   return lista.sort((a, b) => b.ultimaFecha.localeCompare(a.ultimaFecha));
 }

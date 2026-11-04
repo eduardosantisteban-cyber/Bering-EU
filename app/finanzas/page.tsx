@@ -204,7 +204,7 @@ export default function FinanzasPage() {
                           <td className="py-2 pr-3 text-right tabular-nums">{eur2(p.ventas)}</td>
                           <td className="py-2 pr-3 text-right tabular-nums">{p.cogs ? eur2(p.cogs) : "—"}</td>
                           <td className="py-2 pr-3 text-right tabular-nums">
-                            {p.estado === "completo" ? `${eur2(p.margen)} · ${pct1(p.margenPct)}` : "—"}
+                            {p.estado === "completo" || p.estado === "revisar" ? `${eur2(p.margen)} · ${pct1(p.margenPct)}` : "—"}
                           </td>
                           <td className="py-2">
                             <EstadoProyecto estado={p.estado} />
@@ -396,10 +396,11 @@ function VentasCostes({ filas }: { filas: FilaPyG[] }) {
   );
 }
 
-function EstadoProyecto({ estado }: { estado: "completo" | "cogs_pendiente" | "sin_venta" }) {
+function EstadoProyecto({ estado }: { estado: "completo" | "cogs_pendiente" | "revisar" | "sin_venta" }) {
   const e = {
     completo: { t: "Margen real", c: "bg-[#e6f4ea] text-[#1e7e34]" },
     cogs_pendiente: { t: "COGS pendiente", c: "bg-[#fff4e0] text-[#9a5b00]" },
+    revisar: { t: "Revisar", c: "bg-[#fdecec] text-[#b3161b]" },
     sin_venta: { t: "Sin factura de venta", c: "bg-[#f1f1ef] text-[#606060]" },
   }[estado];
   return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${e.c}`}>{e.t}</span>;
