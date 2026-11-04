@@ -67,13 +67,17 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const docs = (data || []) as { id: string; tipo: string; contraparte: string; numero: string; total: number | string | null; pagado: boolean | null; notas: string | null }[];
 
+  // Facturas anuladas en Holded (registradas como incidencias «anulada:F26xxxx»): no cuentan ni se avisan.
+  const { data: anul } = await db.from("fin_incidencias").select("clave").like("clave", "anulada:%");
+  const anuladas = new Set((anul || []).map((r: { clave: string }) => norm(r.clave.slice("anulada:".length))));
+
   const hoy = new Date().toISOString().slice(0, 10);
   const resumen = { ventasHolded: ventas.length, comprasHolded: compras.length, cruzadas: 0, actualizadas: 0, conflictos: [] as string[], ventasNoEnPanel: [] as string[], comprasNoEnPanel: 0 };
 
   async function cruzar(lista: DocHolded[], esVenta: boolean) {
     for (const h of lista) {
       const n = norm(h.docNumber);
-      if (!n) continue;
+      if (!n || (esVenta && anuladas.has(n))) continue;
       const totalH = Number(h.total ?? 0);
       const candidatos = docs.filter((d) => (esVenta ? d.tipo === "venta" : d.tipo !== "venta") && norm(d.numero) === n);
       // mismo número y mismo total (±1 €) para no confundir, p. ej., «1001» de dos proveedores
