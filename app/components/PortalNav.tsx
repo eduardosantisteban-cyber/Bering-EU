@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { logout } from "@/lib/apiClient";
 import { nombreDeEmail } from "@/lib/solicitudes";
-import { useYo } from "./portal";
+import { usePuedeFinanzas, useYo } from "./portal";
 import { BotonTutorial, Tutorial } from "./Tutorial";
 import { Asistente } from "./Asistente";
 
@@ -16,7 +16,7 @@ import { Asistente } from "./Asistente";
 
 export const NOMBRE_PORTAL = "Dársena";
 
-export const SECCIONES = [
+export const SECCIONES: { href: string; label: string; privada?: boolean }[] = [
   { href: "/", label: "Inicio" },
   { href: "/oportunidades", label: "Oportunidades" },
   { href: "/nueva", label: "+ Nueva" },
@@ -26,6 +26,7 @@ export const SECCIONES = [
   { href: "/proveedores/panel", label: "Proveedores" },
   { href: "/proveedores", label: "Precios" },
   { href: "/automatizaciones", label: "Automatizaciones" },
+  { href: "/finanzas", label: "Finanzas", privada: true }, // solo FINANZAS_ACCESO
 ];
 
 /** Sección activa: la de ruta más larga que coincide ("/proveedores/panel" gana a "/proveedores"). */
@@ -42,9 +43,10 @@ export function seccionActiva(pathname: string): string {
 export function PortalTabs({ vertical, onNavegar }: { vertical?: boolean; onNavegar?: () => void }) {
   const pathname = usePathname() || "/";
   const activa = seccionActiva(pathname);
+  const finanzas = usePuedeFinanzas();
   return (
     <nav aria-label="Secciones" className={vertical ? "flex flex-col gap-1" : "flex items-center gap-1 overflow-x-auto"}>
-      {SECCIONES.map((s) => {
+      {SECCIONES.filter((s) => !s.privada || finanzas).map((s) => {
         const es = s.href === activa;
         return (
           <Link

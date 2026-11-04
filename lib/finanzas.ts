@@ -1,0 +1,152 @@
+// Finanzas de gestión (agente CFO): tipos y cálculos compartidos por la API y la página /finanzas.
+// Todo en base imponible (sin IVA) y en EUR. Bering LU (holding) va aparte: no entra en la cuenta de Bering ES.
+
+export type TipoDoc = "venta" | "cogs" | "fijo" | "variable" | "personal" | "grupo";
+
+export interface DocFin {
+  id: string;
+  sociedad: string;
+  tipo: TipoDoc;
+  categoria: string | null;
+  contraparte: string;
+  numero: string;
+  fecha: string;
+  mes: string;
+  base: number | null;
+  iva: number | null;
+  total: number | null;
+  moneda: string;
+  isp: boolean;
+  ticket: boolean;
+  beuq: string | null;
+  hito: string | null;
+  vencimiento: string | null;
+  pagado: boolean | null;
+  drive_id: string | null;
+  notas: string | null;
+}
+
+export interface IncidenciaFin {
+  id: string;
+  creado: string;
+  mes: string;
+  tipo: "faltante" | "duplicado" | "sin_emparejar" | "cogs_pendiente" | "otra_sociedad" | "ilegible" | "otro";
+  descripcion: string;
+  beuq: string | null;
+  importe: number | null;
+  drive_id: string | null;
+  resuelto: boolean;
+}
+
+export const SOCIEDAD_PRINCIPAL = "Bering ES";
+
+/** Importe que cuenta: base imponible en EUR (null si no es EUR o no consta). */
+export function importe(d: Pick<DocFin, "base" | "moneda">): number | null {
+  if (d.moneda !== "EUR" || d.base === null || d.base === undefined) return null;
+  return Number(d.base);
+}
+
+export interface FilaPyG {
+  mes: string;
+  ventas: number;
+  cogs: number;
+  margenBruto: number;
+  fijos: number;
+  variables: number;
+  personal: number;
+  /** null = no hay ningún dato de nóminas cargado para ese mes */
+  personalCargado: boolean;
+  resultado: number;
+}
+
+/** Cuenta de resultados de gestión por mes (Bering ES), en orden cronológico. */
+export function pygMensual(docs: DocFin[]): FilaPyG[] {
+  const meses = new Map<string, FilaPyG>();
+  for (const d of docs) {
+    if (d.sociedad !== SOCIEDAD_PRINCIPAL) continue;
+    const v = importe(d);
+    if (v === null) continue;
+    let f = meses.get(d.mes);
+    if (!f) {
+      f = { mes: d.mes, ventas: 0, cogs: 0, margenBruto: 0, fijos: 0, variables: 0, personal: 0, personalCargado: false, resultado: 0 };
+      meses.set(d.mes, f);
+    }
+    if (d.tipo === "venta") f.ventas += v;
+    else if (d.tipo === "cogs") f.cogs += v;
+    else if (d.tipo === "fijo") f.fijos += v;
+    else if (d.tipo === "variable") f.variables += v;
+    else if (d.tipo === "personal") {
+      f.personal += v;
+      f.personalCargado = true;
+    }
+  }
+  const filas = [...meses.values()].sort((a, b) => a.mes.localeCompare(b.mes));
+  for (const f of filas) {
+    f.margenBruto = f.ventas - f.cogs;
+    f.resultado = f.margenBruto - f.fijos - f.variables - f.personal;
+  }
+  return filas;
+}
+
+export interface Proyecto {
+  beuq: string;
+  cliente: string;
+  ventas: number;
+  cogs: number;
+  margen: number;
+  margenPct: number | null;
+  estado: "completo" | "cogs_pendiente" | "sin_venta";
+  ultimaFecha: string;
+}
+
+/** Margen real por proyecto (BEUQ): ventas frente a COGS imputados. */
+export function proyectos(docs: DocFin[], incidencias: IncidenciaFin[]): Proyecto[] {
+  const pendientes = new Set(incidencias.filter((i) => !i.resuelto && i.tipo === "cogs_pendiente" && i.beuq).map((i) => i.beuq as string));
+  const porBeuq = new Map<string, Proyecto>();
+  for (const d of docs) {
+    if (!d.beuq || d.sociedad !== SOCIEDAD_PRINCIPAL || (d.tipo !== "venta" && d.tipo !== "cogs")) continue;
+    const v = importe(d) ?? 0;
+    let p = porBeuq.get(d.beuq);
+    if (!p) {
+      p = { beuq: d.beuq, cliente: "", ventas: 0, cogs: 0, margen: 0, margenPct: null, estado: "completo", ultimaFecha: d.fecha };
+      porBeuq.set(d.beuq, p);
+    }
+    if (d.tipo === "venta") {
+      p.ventas += v;
+      if (!p.cliente) p.cliente = d.contraparte;
+    } else p.cogs += v;
+    if (d.fecha > p.ultimaFecha) p.ultimaFecha = d.fecha;
+  }
+  for (const b of pendientes) {
+    if (!porBeuq.has(b)) porBeuq.set(b, { beuq: b, cliente: "", ventas: 0, cogs: 0, margen: 0, margenPct: null, estado: "cogs_pendiente", ultimaFecha: "" });
+  }
+  const lista = [...porBeuq.values()];
+  for (const p of lista) {
+    p.margen = p.ventas - p.cogs;
+    p.margenPct = p.ventas ? p.margen / p.ventas : null;
+    p.estado = !p.ventas ? "sin_venta" : pendientes.has(p.beuq) || !p.cogs ? "cogs_pendiente" : "completo";
+  }
+  return lista.sort((a, b) => b.ultimaFecha.localeCompare(a.ultimaFecha));
+}
+
+/** Gastos (fijos + variables) agrupados por categoría en los meses indicados. */
+export function gastosPorCategoria(docs: DocFin[], meses: Set<string>): { k: string; n: number }[] {
+  const m = new Map<string, number>();
+  for (const d of docs) {
+    if (d.sociedad !== SOCIEDAD_PRINCIPAL || !meses.has(d.mes) || (d.tipo !== "fijo" && d.tipo !== "variable")) continue;
+    const v = importe(d);
+    if (v === null) continue;
+    const k = d.categoria || "Otros";
+    m.set(k, (m.get(k) || 0) + v);
+  }
+  return [...m.entries()].map(([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n);
+}
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+/** "2026-10" → "oct 26" */
+export function nombreMes(mes: string): string {
+  const [a, m] = mes.split("-");
+  return `${MESES[Number(m) - 1] || m} ${a.slice(2)}`;
+}
+
+export const enlaceDrive = (id: string | null) => (id ? `https://drive.google.com/file/d/${encodeURIComponent(id)}/view` : null);

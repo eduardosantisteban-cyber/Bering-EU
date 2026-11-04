@@ -42,16 +42,28 @@ export function usePortalData() {
   return { data, error, loading, refreshing, recargar: cargar };
 }
 
-/** Email de quien ha entrado con Google (null con la contraseña del equipo). */
-let YO_: Promise<string | null> | null = null;
-export function leerYo(): Promise<string | null> {
-  if (!YO_) {
-    YO_ = fetch("/api/session", { cache: "no-store" })
+/** Sesión: email de quien ha entrado con Google (null con la contraseña del equipo) y si puede ver Finanzas. */
+let SESION_: Promise<{ email: string | null; finanzas: boolean }> | null = null;
+function leerSesion(): Promise<{ email: string | null; finanzas: boolean }> {
+  if (!SESION_) {
+    SESION_ = fetch("/api/session", { cache: "no-store" })
       .then((r) => r.json())
-      .then((b) => (b && typeof b.email === "string" ? b.email : null))
-      .catch(() => null);
+      .then((b) => ({ email: b && typeof b.email === "string" ? b.email : null, finanzas: b?.finanzas === true }))
+      .catch(() => ({ email: null, finanzas: false }));
   }
-  return YO_;
+  return SESION_;
+}
+export function leerYo(): Promise<string | null> {
+  return leerSesion().then((s) => s.email);
+}
+
+/** ¿Ve la sección Finanzas? (solo lo decide el servidor; la API también lo comprueba) */
+export function usePuedeFinanzas(): boolean {
+  const [si, setSi] = useState(false);
+  useEffect(() => {
+    leerSesion().then((s) => setSi(s.finanzas));
+  }, []);
+  return si;
 }
 
 export function useYo(): string | null {

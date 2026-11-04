@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkPassword, contrasenaPermitida, createSessionToken, emailDeSesion, SESSION_COOKIE } from "@/lib/auth";
+import { accesoFinanzas, checkPassword, contrasenaPermitida, createSessionToken, emailDeSesion, SESSION_COOKIE } from "@/lib/auth";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -23,11 +23,11 @@ export async function POST(request: Request) {
   return response;
 }
 
-/** Quién ha entrado: { email } (null con la contraseña compartida). */
+/** Quién ha entrado: { email } (null con la contraseña compartida) y si puede ver Finanzas. */
 export async function GET(request: Request) {
   const cookie = (request.headers.get("cookie") || "").split(/;\s*/).find((c) => c.startsWith(SESSION_COOKIE + "="));
   const email = emailDeSesion(cookie ? decodeURIComponent(cookie.slice(SESSION_COOKIE.length + 1)) : null);
-  return NextResponse.json({ email }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ email, finanzas: accesoFinanzas(email) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function DELETE() {

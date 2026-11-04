@@ -86,3 +86,15 @@ export function checkPassword(password: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
+
+/**
+ * ¿Puede ver Finanzas? Solo con Google (nunca con la contraseña compartida).
+ * FINANZAS_ACCESO (Vercel): lista de emails separada por comas. Por defecto, solo Eduardo.
+ */
+export function accesoFinanzas(email: string | null | undefined): boolean {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return false;
+  const lista = (process.env.FINANZAS_ACCESO || "eduardo.z@beringeu.es")
+    .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  return lista.includes(e);
+}
