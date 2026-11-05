@@ -188,7 +188,7 @@ export function GanadoSinFacturar({ filas, cargando, error }: { filas: GanadoPen
   return (
     <Tarjeta
       titulo="Ganado pendiente de facturar"
-      sub="Oportunidades ganadas en 2026 (hoja Solicitudes y Holded) frente a lo facturado con el mismo BEUQ. Base sin IVA."
+      sub="Oportunidades ganadas en 2026 (hoja Solicitudes y Holded) frente a lo facturado con el mismo BEUQ. Base sin IVA, salvo las que vienen del CRM de Holded (con IVA, se comparan con lo facturado con IVA)."
       accion={filas.length ? <span className="text-sm font-semibold tabular-nums text-[#9a5b00]">{eur2(total)}</span> : undefined}
     >
       {cargando ? (
@@ -216,7 +216,10 @@ export function GanadoSinFacturar({ filas, cargando, error }: { filas: GanadoPen
                   <td className="py-1.5 pr-3 font-medium">{f.codigo}</td>
                   <td className="py-1.5 pr-3">{f.empresa || "—"}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{f.fechaGanado ? nombreMes(f.fechaGanado.slice(0, 7)) : "—"}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{eur2(f.importe)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums" title={f.conIva ? "Importe del CRM de Holded, con IVA" : "Base imponible"}>
+                    {eur2(f.importe)}
+                    {f.conIva && <span className="ml-1 text-[10px] text-[#8a8a8a]">IVA incl.</span>}
+                  </td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{f.facturado ? eur2(f.facturado) : "—"}</td>
                   <td className="py-1.5 text-right font-semibold tabular-nums text-[#9a5b00]">{eur2(f.pendiente)}</td>
                 </tr>

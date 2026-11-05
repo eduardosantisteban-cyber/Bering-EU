@@ -7,7 +7,7 @@ import { Barras, Cargando, Kpi, Tarjeta, usePortalData } from "../components/por
 import { Caja, GanadoSinFacturar } from "./Caja";
 import { ConflictosHolded, Pendientes, PrevisionTesoreria, type Conflicto, type CuentaBanco } from "./Tesoreria";
 import {
-  SOCIEDAD_PRINCIPAL, cobrosYPagos, enlaceDrive, ganadoSinFacturar, gastosPorCategoria, importe, nombreMes, proyectos, pygMensual,
+  SOCIEDAD_PRINCIPAL, claveProyecto, cobrosYPagos, enlaceDrive, ganadoSinFacturar, gastosPorCategoria, importe, nombreMes, proyectos, pygMensual,
   type DocFin, type FilaPyG, type IncidenciaFin, type TipoDoc,
 } from "@/lib/finanzas";
 
@@ -85,7 +85,15 @@ export default function FinanzasPage() {
   const [recientes, setRecientes] = useState<{ id: string; texto: string }[]>([]);
   const caja = useMemo(() => (datos ? cobrosYPagos(datos.documentos, new Date()) : { cobros: [], pagos: [] }), [datos]);
   const ganado = useMemo(
-    () => (datos && portal.data ? ganadoSinFacturar(portal.data.oportunidades, datos.documentos) : []),
+    () =>
+      datos && portal.data
+        ? ganadoSinFacturar(
+            portal.data.oportunidades,
+            datos.documentos,
+            "2026-01-01",
+            new Set(datos.incidencias.map((i) => i.clave || "").filter((c) => c.startsWith("no-facturar:")).map((c) => claveProyecto(c.slice(12)) || "")),
+          )
+        : [],
     [datos, portal.data],
   );
 

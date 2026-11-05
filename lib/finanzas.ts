@@ -38,6 +38,8 @@ export interface IncidenciaFin {
   importe: number | null;
   drive_id: string | null;
   resuelto: boolean;
+  /** Clave estable (p. ej. «anulada:F262016», «no-facturar:BEUQ421») */
+  clave?: string | null;
   /** Respuesta de Eduardo desde el panel; el agente CFO la aplica en la siguiente revisión */
   respuesta?: string | null;
   respondido_en?: string | null;
@@ -220,23 +222,31 @@ export interface GanadoPendiente {
   importe: number;
   facturado: number;
   pendiente: number;
+  /** true = el importe de la oportunidad viene del CRM de Holded, que lo guarda con IVA */
+  conIva: boolean;
 }
 
 /**
  * Oportunidades ganadas (desde `desde`) cuyo importe ofertado aún no está facturado del todo.
  * `ops` viene de /api/portal (hoja Solicitudes + histórico de Holded).
+ * Las de la hoja traen la base imponible; las del CRM de Holded (fila 0, sin enlace a la hoja) traen el total con IVA,
+ * así que se comparan con lo facturado con IVA.
+ * `excluir`: proyectos que no se facturarán (incidencias «no-facturar:BEUQxxx»).
  */
 export function ganadoSinFacturar(
-  ops: { codigo: string; empresa: string; estado: string; fechaEstado: string | null; importe: number | null }[],
+  ops: { codigo: string; empresa: string; estado: string; fechaEstado: string | null; importe: number | null; fila?: number; sheetUrl?: string }[],
   docs: DocFin[],
   desde = "2026-01-01",
+  excluir: Set<string> = new Set(),
 ): GanadoPendiente[] {
   const facturado = new Map<string, number>();
+  const facturadoIva = new Map<string, number>();
   for (const d of docs) {
-    if (d.tipo !== "venta" || d.sociedad !== SOCIEDAD_PRINCIPAL) continue;
+    if (d.tipo !== "venta" || d.sociedad !== SOCIEDAD_PRINCIPAL || d.moneda !== "EUR") continue;
     const k = claveProyecto(d.beuq);
     const v = importe(d);
     if (k && v !== null) facturado.set(k, (facturado.get(k) || 0) + v);
+    if (k) facturadoIva.set(k, (facturadoIva.get(k) || 0) + importeCaja(d));
   }
   const vistos = new Set<string>();
   const out: GanadoPendiente[] = [];
@@ -244,13 +254,14 @@ export function ganadoSinFacturar(
     if (o.estado !== "Ganado" || !o.importe || o.importe <= 0) continue;
     if (o.fechaEstado && o.fechaEstado.slice(0, 10) < desde) continue;
     const k = claveProyecto(o.codigo);
-    if (!k || vistos.has(k)) continue;
+    if (!k || vistos.has(k) || excluir.has(k)) continue;
     vistos.add(k);
-    const f = facturado.get(k) || 0;
+    const conIva = o.fila === 0 && !o.sheetUrl;
+    const f = (conIva ? facturadoIva : facturado).get(k) || 0;
     const pendiente = o.importe - f;
     // margen de redondeo: 1 % o 20 €
     if (pendiente <= Math.max(20, o.importe * 0.01)) continue;
-    out.push({ clave: k, codigo: o.codigo, empresa: o.empresa, fechaGanado: o.fechaEstado, importe: o.importe, facturado: f, pendiente });
+    out.push({ clave: k, codigo: o.codigo, empresa: o.empresa, fechaGanado: o.fechaEstado, importe: o.importe, facturado: f, pendiente, conIva });
   }
   return out.sort((a, b) => b.pendiente - a.pendiente);
 }

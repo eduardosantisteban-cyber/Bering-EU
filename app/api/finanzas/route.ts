@@ -54,7 +54,7 @@ export async function GET(req: Request) {
       .order("fecha", { ascending: false })
       .limit(5000),
     db.from("fin_incidencias")
-      .select("id,creado,mes,tipo,descripcion,beuq,importe,drive_id,resuelto,respuesta,respondido_en")
+      .select("id,creado,mes,tipo,descripcion,beuq,importe,drive_id,resuelto,respuesta,respondido_en,clave")
       .order("creado", { ascending: false })
       .limit(1000),
   ]);
