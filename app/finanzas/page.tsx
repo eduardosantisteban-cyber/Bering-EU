@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ExternalLink, Loader2, Lock } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, ExternalLink, Loader2, Lock } from "lucide-react";
 import { PortalHeader } from "../components/PortalNav";
 import { Barras, Cargando, Kpi, Tarjeta, usePortalData } from "../components/portal";
 import { Caja, GanadoSinFacturar } from "./Caja";
@@ -279,6 +279,13 @@ export default function FinanzasPage() {
               </p>
             )}
 
+            <Tarjeta
+              titulo="Cuenta de resultados"
+              sub="Base imponible por mes de factura. Pulsa una línea (Ventas, COGS, gastos…) para ver el desglose por cliente o proveedor; pasa el ratón por una cifra para ver las facturas."
+            >
+              <TablaPyG filas={pyg} docs={datos.documentos} />
+            </Tarjeta>
+
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               <Kpi label="Ventas" valor={eur2(total.ventas)} sub={mes ? nombreMes(mes) : `${meses.length} meses`} />
               <Kpi label="Margen bruto" valor={eur2(total.margenBruto)} sub={total.ventas ? pct1(total.margenBruto / total.ventas) + " sobre ventas" : undefined} alerta={total.margenBruto < 0} />
@@ -298,10 +305,6 @@ export default function FinanzasPage() {
             <PrevisionTesoreria docs={datos.documentos} cuentas={bancos.cuentas} cargando={bancos.cargando} error={bancos.error} />
 
             <GanadoSinFacturar filas={ganado} cargando={portal.loading} error={portal.error} />
-
-            <Tarjeta titulo="Cuenta de resultados" sub="Base imponible por mes de factura. Los COGS se imputan al mes de la factura del proveedor.">
-              <TablaPyG filas={pyg} />
-            </Tarjeta>
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Tarjeta titulo="Ventas y costes por mes" sub="Costes = COGS + fijos + variables + personal">
@@ -438,18 +441,85 @@ function sumar(filas: FilaPyG[]) {
   return t;
 }
 
-function TablaPyG({ filas }: { filas: FilaPyG[] }) {
+type LineaPyG = { k: string; v: (f: FilaPyG | ReturnType<typeof sumar>) => number; fuerte?: boolean; resta?: boolean; tipo?: TipoDoc };
+
+const LINEAS_PYG: LineaPyG[] = [
+  { k: "Ventas", v: (f) => f.ventas, tipo: "venta" },
+  { k: "COGS (proveedores)", v: (f) => f.cogs, resta: true, tipo: "cogs" },
+  { k: "Margen bruto", v: (f) => f.margenBruto, fuerte: true },
+  { k: "Gastos fijos", v: (f) => f.fijos, resta: true, tipo: "fijo" },
+  { k: "Gastos variables", v: (f) => f.variables, resta: true, tipo: "variable" },
+  { k: "Personal", v: (f) => f.personal, resta: true, tipo: "personal" },
+  { k: "Resultado operativo", v: (f) => f.resultado, fuerte: true },
+];
+
+interface Desglose {
+  contraparte: string;
+  porMes: Map<string, { n: number; docs: DocFin[] }>;
+  total: number;
+}
+
+/** Documentos de Bering ES de un tipo, agrupados por cliente/proveedor y mes. */
+function desglosar(docs: DocFin[], tipo: TipoDoc): Desglose[] {
+  const m = new Map<string, Desglose>();
+  for (const d of docs) {
+    if (d.sociedad !== SOCIEDAD_PRINCIPAL || d.tipo !== tipo) continue;
+    const v = importe(d);
+    if (v === null) continue;
+    const k = d.contraparte.trim();
+    let g = m.get(k.toLowerCase());
+    if (!g) {
+      g = { contraparte: k, porMes: new Map(), total: 0 };
+      m.set(k.toLowerCase(), g);
+    }
+    const c = g.porMes.get(d.mes) || { n: 0, docs: [] };
+    c.n += v;
+    c.docs.push(d);
+    g.porMes.set(d.mes, c);
+    g.total += v;
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
+/** Texto del tooltip: las facturas que forman una cifra. */
+function detalleDocs(docs: DocFin[]) {
+  return docs
+    .slice()
+    .sort((a, b) => (importe(b) || 0) - (importe(a) || 0))
+    .map((d) => `${fecha(d.fecha)} · ${d.numero}${d.beuq ? " · " + d.beuq : ""} · ${eur2(importe(d))}`)
+    .join("\n");
+}
+
+/** Tooltip de una celda de línea principal: los 6 mayores clientes/proveedores del mes. */
+function detalleMes(grupos: Desglose[], mes: string | null) {
+  const filas = grupos
+    .map((g) => ({ c: g.contraparte, n: mes ? g.porMes.get(mes)?.n || 0 : g.total }))
+    .filter((x) => x.n)
+    .sort((a, b) => b.n - a.n);
+  if (!filas.length) return undefined;
+  const top = filas.slice(0, 6).map((x) => `${x.c}: ${eur2(x.n)}`);
+  if (filas.length > 6) top.push(`y ${filas.length - 6} más (pulsa para ver todo)`);
+  return top.join("\n");
+}
+
+function TablaPyG({ filas, docs }: { filas: FilaPyG[]; docs: DocFin[] }) {
+  const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const desgloses = useMemo(() => {
+    const out = new Map<TipoDoc, Desglose[]>();
+    for (const l of LINEAS_PYG) if (l.tipo) out.set(l.tipo, desglosar(docs, l.tipo));
+    return out;
+  }, [docs]);
   if (!filas.length) return <p className="text-sm text-[#606060]">Aún no hay datos.</p>;
   const t = sumar(filas);
-  const lineas: { k: string; v: (f: FilaPyG | ReturnType<typeof sumar>) => number; fuerte?: boolean; resta?: boolean }[] = [
-    { k: "Ventas", v: (f) => f.ventas },
-    { k: "COGS (proveedores)", v: (f) => f.cogs, resta: true },
-    { k: "Margen bruto", v: (f) => f.margenBruto, fuerte: true },
-    { k: "Gastos fijos", v: (f) => f.fijos, resta: true },
-    { k: "Gastos variables", v: (f) => f.variables, resta: true },
-    { k: "Personal", v: (f) => f.personal, resta: true },
-    { k: "Resultado operativo", v: (f) => f.resultado, fuerte: true },
-  ];
+  const alternar = (k: string) =>
+    setAbiertas((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  const signo = (resta: boolean | undefined, v: number) => eur2(resta && v ? -v : v);
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[560px] text-sm">
@@ -463,23 +533,68 @@ function TablaPyG({ filas }: { filas: FilaPyG[] }) {
           </tr>
         </thead>
         <tbody>
-          {lineas.map((l) => (
-            <tr key={l.k} className={`border-b border-[#f1f1ef] last:border-0 ${l.fuerte ? "font-semibold" : ""}`}>
-              <td className="py-1.5 pr-3">{l.k}</td>
-              {filas.map((f) => {
-                const v = l.v(f);
-                const vacio = l.k === "Personal" && !f.personalCargado;
-                return (
-                  <td key={f.mes} className={`py-1.5 pr-3 text-right tabular-nums ${l.fuerte && v < 0 ? "text-[#e83038]" : ""} ${vacio ? "text-[#b0b0ac]" : ""}`}>
-                    {vacio ? "sin cargar" : eur2(l.resta && v ? -v : v)}
+          {LINEAS_PYG.map((l) => {
+            const grupos = l.tipo ? desgloses.get(l.tipo) || [] : [];
+            const desplegable = grupos.length > 0;
+            const abierta = abiertas.has(l.k);
+            return (
+              <Fragment key={l.k}>
+                <tr
+                  className={`border-b border-[#f1f1ef] ${l.fuerte ? "font-semibold" : ""} ${desplegable ? "cursor-pointer hover:bg-[#fafaf9]" : ""}`}
+                  onClick={desplegable ? () => alternar(l.k) : undefined}
+                  aria-expanded={desplegable ? abierta : undefined}
+                >
+                  <td className="py-1.5 pr-3">
+                    <span className="inline-flex items-center gap-1">
+                      {desplegable ? abierta ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <span className="inline-block w-[13px]" />}
+                      {l.k}
+                    </span>
                   </td>
-                );
-              })}
-              <td className={`py-1.5 text-right tabular-nums font-semibold ${l.fuerte && l.v(t) < 0 ? "text-[#e83038]" : ""}`}>
-                {eur2(l.resta && l.v(t) ? -l.v(t) : l.v(t))}
-              </td>
-            </tr>
-          ))}
+                  {filas.map((f) => {
+                    const v = l.v(f);
+                    const vacio = l.k === "Personal" && !f.personalCargado;
+                    return (
+                      <td
+                        key={f.mes}
+                        title={desplegable ? detalleMes(grupos, f.mes) : undefined}
+                        className={`py-1.5 pr-3 text-right tabular-nums ${l.fuerte && v < 0 ? "text-[#e83038]" : ""} ${vacio ? "text-[#b0b0ac]" : ""}`}
+                      >
+                        {vacio ? "sin cargar" : signo(l.resta, v)}
+                      </td>
+                    );
+                  })}
+                  <td
+                    title={desplegable ? detalleMes(grupos, null) : undefined}
+                    className={`py-1.5 text-right font-semibold tabular-nums ${l.fuerte && l.v(t) < 0 ? "text-[#e83038]" : ""}`}
+                  >
+                    {signo(l.resta, l.v(t))}
+                  </td>
+                </tr>
+                {abierta &&
+                  grupos.map((g) => (
+                    <tr key={l.k + g.contraparte} className="border-b border-[#f6f6f4] bg-[#fafaf9] text-xs text-[#505050]">
+                      <td className="max-w-[260px] truncate py-1 pl-6 pr-3" title={g.contraparte}>
+                        {g.contraparte}
+                      </td>
+                      {filas.map((f) => {
+                        const c = g.porMes.get(f.mes);
+                        return (
+                          <td key={f.mes} className="py-1 pr-3 text-right tabular-nums" title={c ? detalleDocs(c.docs) : undefined}>
+                            {c ? signo(l.resta, c.n) : ""}
+                          </td>
+                        );
+                      })}
+                      <td
+                        className="py-1 text-right font-medium tabular-nums"
+                        title={detalleDocs([...g.porMes.values()].flatMap((c) => c.docs))}
+                      >
+                        {signo(l.resta, g.total)}
+                      </td>
+                    </tr>
+                  ))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
