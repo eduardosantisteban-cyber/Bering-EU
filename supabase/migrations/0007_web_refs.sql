@@ -24,3 +24,12 @@ create table if not exists public.web_refs (
 );
 create index if not exists web_refs_oportunidad on public.web_refs (oportunidad);
 alter table public.web_refs enable row level security;
+
+-- Marca de la última ejecución de tareas periódicas que se lanzan aprovechando otras peticiones
+-- (p. ej. la vinculación de referencias web cada hora). Solo la usa el portal (service role).
+create table if not exists public.tareas (
+  nombre text primary key,
+  ultima timestamptz not null default '1970-01-01',
+  resultado jsonb
+);
+alter table public.tareas enable row level security;

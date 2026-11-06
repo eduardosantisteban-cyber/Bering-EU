@@ -12,8 +12,13 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.7.0";
+export const APP_VERSION = "4.7.1";
 export const CHANGELOG: { version: string; fecha?: string; desc: string }[] = [
+  {
+    version: "4.7.1",
+    fecha: "2026-11-06",
+    desc: "Origen web: los códigos Ref. W-XXXXXX de WhatsApp/email se vinculan solos cada hora (sin abrir la oportunidad) y se reintenta pasar a Google Ads los clics pendientes",
+  },
   {
     version: "4.7.0",
     fecha: "2026-11-06",

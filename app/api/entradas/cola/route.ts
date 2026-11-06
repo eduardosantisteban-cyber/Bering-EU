@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { vincularPendientesSiToca } from "@/lib/webRefVincular";
 import { destinatariosDeDestino, leerMapaDestinos, perdidasDuplicadas, type LlamadaGuardada } from "@/lib/entradas";
 
 // Cola para el script de Apps Script (no usa la sesión del portal: se protege con ENTRADAS_TOKEN).
@@ -21,6 +22,9 @@ function autorizado(req: Request): boolean {
 
 export async function GET(req: Request) {
   if (!autorizado(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  // Aprovecha la consulta del script (cada 10 min) para vincular, como mucho una vez por hora, los códigos
+  // «Ref. W-XXXXXX» de WhatsApp/email con sus oportunidades, después de responder.
+  after(() => vincularPendientesSiToca().catch((err) => console.error("web-refs", err)));
   if (new URL(req.url).searchParams.has("ping")) return NextResponse.json({ ok: true });
   const usuario = String(new URL(req.url).searchParams.get("usuario") || "").trim().toLowerCase();
   if (!/@/.test(usuario)) return NextResponse.json({ error: "Falta usuario" }, { status: 400 });
