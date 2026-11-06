@@ -20,14 +20,19 @@ export const AVISOS = {
 export const MARCA_PRINCIPAL = "Bering EU";
 export const MARCAS: { nombre: string; prefijo: string }[] = [{ nombre: "Muelle Max", prefijo: "MMQ" }];
 
-/** Motivos de pérdida (mismos que MOTIVOS_PERDIDA del script). Se guardan en la columna W de Solicitudes. */
+/** Motivos de pérdida: los mismos que las «Razones de pérdida» de Holded (mismo texto y orden). Se guardan en la columna W de Solicitudes. */
 export const MOTIVOS_PERDIDA = [
-  "Precio",
-  "Plazo de entrega",
-  "Eligió a la competencia",
-  "Proyecto cancelado o aplazado",
-  "Sin respuesta del cliente",
-  "No cumplimos lo técnico",
+  "Cliente final no decide",
+  "No responde (llamadas/correos)",
+  "No aplica (no vendemos producto)",
+  "Proyecto cancelado/suspendido",
+  "No es rentable",
+  "Consiguió mejor propuesta",
+  "No envía informacion",
+  "Tiempo de entrega",
+  "Cliente perdio proyecto",
+  "Cliente molesto",
+  "Mas de 60 dias",
   "Otro",
 ];
 
