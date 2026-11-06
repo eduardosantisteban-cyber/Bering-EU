@@ -61,15 +61,18 @@ export async function POST(req: Request) {
     await escribirRango(sheetId, `${HOJA}!${letra(col)}${fila}`, [[valor]]);
 
     let holded = false;
+    let holdedDetalle = "";
     if (body.accion === "motivo" && valor) holded = await notaHolded(codigo, `Motivo de pérdida: ${valor} (indicado en el portal).`);
     if (body.accion === "estado") {
       // Al cerrar o reabrir, el motivo de pérdida se ajusta: se guarda el elegido o se borra si ya no está perdida
       if (motivo || valor !== "Perdido") await escribirRango(sheetId, `${HOJA}!${letra(COL.MOTIVO_PERDIDA)}${fila}`, [[motivo]]);
       // Al cerrarla se para el seguimiento automático al cliente
       if (valor === "Ganado" || valor === "Perdido") await escribirRango(sheetId, `${HOJA}!${letra(COL.SIN_SEGUIMIENTO)}${fila}`, [[true]]);
-      holded = await estadoHolded(codigo, valor as string, motivo);
+      const r = await estadoHolded(codigo, valor as string, motivo);
+      holded = r.ok;
+      holdedDetalle = r.detalle;
     }
-    return NextResponse.json({ ok: true, fila, holded });
+    return NextResponse.json({ ok: true, fila, holded, holdedDetalle });
   } catch (err) {
     const msg = (err as Error).message || "No se pudo guardar";
     const cuenta = serviceAccountEmail();
@@ -89,44 +92,69 @@ export async function POST(req: Request) {
 const ESTADOS_PORTAL = ["Ganado", "Perdido", "Presupuesto enviado"];
 
 /**
- * Refleja el cambio en Holded: mueve la oportunidad a la etapa «Ganado»/«Perdido» de su embudo (si existe)
- * y deja una nota. Devuelve true si la etapa cambió. Opcional: si falla, la hoja ya está actualizada.
+ * Refleja el cambio en Holded. En Holded «ganada/perdida» es el estado de la oportunidad (status 1 / 2; 0 = abierta),
+ * no una etapa: primero se cambia ese estado; si la API no lo acepta, se prueba a mover a una etapa llamada
+ * «Ganado»/«Perdido» del embudo. Siempre deja una nota. Devuelve si se aplicó y, si no, por qué.
  */
-async function estadoHolded(codigo: string, estado: string, motivo: string): Promise<boolean> {
+async function estadoHolded(codigo: string, estado: string, motivo: string): Promise<{ ok: boolean; detalle: string }> {
   const key = process.env.HOLDED_API_KEY;
-  if (!key) return false;
+  if (!key) return { ok: false, detalle: "falta HOLDED_API_KEY" };
+  const h = { key, accept: "application/json", "Content-Type": "application/json" };
+  const base = "https://api.holded.com/api/crm/v1";
+  const pasos: string[] = [];
   try {
-    const h = { key, accept: "application/json", "Content-Type": "application/json" };
-    const base = "https://api.holded.com/api/crm/v1";
-    const [rl, rf] = await Promise.all([fetch(`${base}/leads`, { headers: h }), fetch(`${base}/funnels`, { headers: h })]);
-    if (!rl.ok) return false;
-    const leads = (await rl.json()) as { id: string; name?: string; funnelId?: string; stageId?: string }[];
+    const rl = await fetch(`${base}/leads`, { headers: h });
+    if (!rl.ok) return { ok: false, detalle: `Holded leads ${rl.status}` };
+    const leads = (await rl.json()) as { id: string; name?: string; stageId?: string; status?: number }[];
     const re = new RegExp("^\\s*" + codigo + "(?!\\d)", "i");
     const lead = (Array.isArray(leads) ? leads : []).filter((l) => re.test(String(l.name || ""))).pop();
-    if (!lead) return false;
+    if (!lead) return { ok: false, detalle: `no hay ninguna oportunidad en Holded cuyo nombre empiece por ${codigo}` };
+
     const nota = `Marcada como ${estado} en Dársena${motivo ? ` · motivo: ${motivo}` : ""}.`;
     await fetch(`${base}/leads/${lead.id}/notes`, { method: "POST", headers: h, body: JSON.stringify({ title: `Estado: ${estado}`, desc: nota }) }).catch(() => null);
-    if (!rf.ok) return false;
-    const funnels = (await rf.json()) as { id?: string; stages?: { stageId?: string; id?: string; key?: string; name?: string }[] }[];
+
+    const leer = () => fetch(`${base}/leads/${lead.id}`, { headers: h }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+
+    // 1) Estado de la oportunidad: 1 ganada · 2 perdida · 0 abierta
+    const status = estado === "Ganado" ? 1 : estado === "Perdido" ? 2 : 0;
+    for (const cuerpo of [{ status }, { status: String(status) }]) {
+      const r = await fetch(`${base}/leads/${lead.id}`, { method: "PUT", headers: h, body: JSON.stringify(cuerpo) }).catch(() => null);
+      if (!r) continue;
+      if (!r.ok) {
+        pasos.push(`PUT status → ${r.status} ${(await r.text().catch(() => "")).slice(0, 120)}`);
+        continue;
+      }
+      const l = await leer();
+      if (l && Number(l.status) === status) return { ok: true, detalle: "estado de la oportunidad actualizado" };
+      pasos.push(`PUT status → ${r.status}, pero la oportunidad sigue con status ${l?.status ?? "?"}`);
+    }
+
+    // 2) Etapa con ese nombre en el embudo de la oportunidad
+    const rf = await fetch(`${base}/funnels`, { headers: h });
+    if (!rf.ok) return { ok: false, detalle: pasos.concat(`funnels ${rf.status}`).join(" · ") };
+    const funnels = (await rf.json()) as { name?: string; stages?: { stageId?: string; id?: string; key?: string; name?: string }[] }[];
+    const idDe = (s: { stageId?: string; id?: string; key?: string }) => s.stageId || s.id || s.key;
+    const embudo = (Array.isArray(funnels) ? funnels : []).find((f) => (f.stages || []).some((s) => idDe(s) === lead.stageId));
     const patron = estado === "Ganado" ? /ganad|won|aceptad/i : estado === "Perdido" ? /perdid|lost|rechazad|descartad/i : /enviad|sent|seguimiento|negociaci/i;
-    const embudo = (Array.isArray(funnels) ? funnels : []).find((f) =>
-      (f.stages || []).some((s) => (s.stageId || s.id || s.key) === lead.stageId),
-    );
     const etapa = (embudo?.stages || []).find((s) => patron.test(String(s.name || "")));
-    const stageId = etapa ? etapa.stageId || etapa.id || etapa.key : null;
-    if (!stageId || stageId === lead.stageId) return !!stageId;
+    if (!etapa) {
+      pasos.push(`el embudo «${embudo?.name || "?"}» no tiene etapa ${estado} (etapas: ${(embudo?.stages || []).map((s) => s.name).join(", ")})`);
+      return { ok: false, detalle: pasos.join(" · ") };
+    }
+    const stageId = idDe(etapa);
     for (const [url, cuerpo] of [
       [`${base}/leads/${lead.id}/stages`, { stageId }],
       [`${base}/leads/${lead.id}`, { stageId }],
     ] as const) {
       const r = await fetch(url, { method: "PUT", headers: h, body: JSON.stringify(cuerpo) }).catch(() => null);
       if (!r?.ok) continue;
-      const comprobar = await fetch(`${base}/leads/${lead.id}`, { headers: h }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
-      if (comprobar?.stageId === stageId) return true;
+      const l = await leer();
+      if (l?.stageId === stageId) return { ok: true, detalle: `movida a la etapa «${etapa.name}»` };
     }
-    return false;
-  } catch {
-    return false;
+    pasos.push(`no se pudo mover a la etapa «${etapa.name}»`);
+    return { ok: false, detalle: pasos.join(" · ") };
+  } catch (e) {
+    return { ok: false, detalle: pasos.concat((e as Error).message).join(" · ") };
   }
 }
 

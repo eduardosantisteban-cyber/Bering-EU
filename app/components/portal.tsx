@@ -505,7 +505,7 @@ export async function accionPortal(
   codigo: string,
   valor: string | boolean,
   motivo?: string,
-): Promise<{ holded?: boolean }> {
+): Promise<{ holded?: boolean; holdedDetalle?: string }> {
   const res = await fetch("/api/portal/accion", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -567,7 +567,11 @@ export function CambiarEstado({ o, onGuardado }: { o: Oportunidad; onGuardado: (
     setError("");
     try {
       const r = await accionPortal("estado", o.codigo, estado, m);
-      setAviso(r.holded ? "Actualizado también en Holded." : "Guardado. En Holded no se pudo mover la etapa: revísalo allí.");
+      setAviso(
+        r.holded
+          ? "Actualizado también en Holded."
+          : `Guardado en la hoja. En Holded no se pudo cambiar${r.holdedDetalle ? ` (${r.holdedDetalle})` : ""}: márcala allí a mano.`,
+      );
       setPaso("");
       setMotivo("");
       onGuardado();
