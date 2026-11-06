@@ -12,10 +12,26 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.3.0";
-export const CHANGELOG: { version: string; desc: string }[] = [
+export const APP_VERSION = "4.6.0";
+export const CHANGELOG: { version: string; fecha?: string; desc: string }[] = [
+  {
+    version: "4.6.0",
+    fecha: "2026-11-06",
+    desc: "Inicio: versión de Dársena y del script de automatización, con su historial al pasar el ratón, y estado en línea de la automatización",
+  },
+  {
+    version: "4.5.0",
+    fecha: "2026-11-06",
+    desc: "Oportunidades: marcar como ganada o perdida (con motivo) y reabrir desde Dársena; se refleja en la hoja Solicitudes y en Holded, y para el seguimiento automático. Motivos de pérdida iguales a los de Holded",
+  },
+  {
+    version: "4.4.0",
+    fecha: "2026-11-05",
+    desc: "Finanzas (privada): cuenta de resultados con desglose por cliente/proveedor, margen por proyecto, caja y previsión de tesorería a 13 semanas con Holded, ganado sin facturar, conflictos con Holded y pendientes de Ada con respuesta",
+  },
   {
     version: "4.3.0",
+    fecha: "2026-11-03",
     desc: "Fichas técnicas: la IA lee la fecha y versión de cada PDF; si hay varias del mismo producto, el cotizador da siempre la más reciente y las anteriores salen marcadas y ocultas. Marketing: qué ventas trae Google Ads (oportunidades reales, coste por oportunidad y por venta, retorno por campaña)",
   },
   {
@@ -200,3 +216,16 @@ Reglas para asignar "categoria" (aplícalas siempre, no la dejes vacía si puede
 Reglas importantes:
 - No inventes datos: si un campo no aparece claramente en el documento, usa null (o "" para categoria).
 - Devuelve solo el JSON, nada más: ni texto antes, ni después, ni bloques de markdown.`;
+
+/**
+ * Versiones del script de automatización (Apps Script de la hoja Solicitudes). El script escribe la suya en la
+ * pestaña «Sistema» («Versión del script»); aquí va qué trae cada una. Añade una entrada al publicar una nueva.
+ */
+export const SCRIPT_VERSIONES: { version: string; fecha: string; desc: string }[] = [
+  {
+    version: "2026-11-05-motor",
+    fecha: "2026-11-05",
+    desc: "Cada puerta seccional se presupuesta con su motor, elegido por superficie (Novoferm NA SE 5.24 / 9.24 / 14.21 T); no se duplica si la puerta ya lo incluye",
+  },
+  { version: "2026-11-03b", fecha: "2026-11-03", desc: "Versión anterior (sin detalle registrado)" },
+];

@@ -30,6 +30,7 @@ import {
 } from "./components/portal";
 import { embudo, enPeriodo, indicadores, mediana, porTipo, serieMensual, type Oportunidad } from "@/lib/solicitudes";
 import { BandejaHoy, useDatosHoy } from "./components/darsena";
+import { APP_VERSION, CHANGELOG, SCRIPT_VERSIONES } from "@/lib/constants";
 
 // Inicio de Dársena: lo que hay que hacer hoy, cómo vamos, estado de las automatizaciones y accesos directos.
 
@@ -92,6 +93,7 @@ export default function InicioPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Versiones ok={automatizacionOk} ultima={ultima} versionScript={typeof sistema["Versión del script"] === "string" ? (sistema["Versión del script"] as string) : null} />
             <SelectorMarca valor={marca} onChange={setMarca} />
             {personas.length > 1 && <SelectorPersona personas={personas} valor={quien} onChange={setPersona} />}
           </div>
@@ -241,3 +243,57 @@ export default function InicioPage() {
     </div>
   );
 }
+
+/** Versión de Dársena y del script, con su historial al pasar el ratón, y estado en línea de la automatización. */
+function Versiones({ ok, ultima, versionScript }: { ok: boolean; ultima: string | null; versionScript: string | null }) {
+  const fechaCorta = (f?: string) => (f ? f.split("-").reverse().join("/") : "");
+  const scriptConocido = SCRIPT_VERSIONES.find((v) => v.version === versionScript);
+  return (
+    <div className="group relative">
+      <div
+        tabIndex={0}
+        className="inline-flex cursor-default items-center gap-2 rounded-md border border-[#e2e0dc] bg-white px-2.5 py-1 text-xs text-[#606060] outline-none focus:border-[#606060]"
+      >
+        <span className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-emerald-500" : ultima ? "bg-[#e83038]" : "bg-[#b0b0ac]"}`} aria-hidden />
+        <span className="font-medium text-[#282828]">{ok ? "En línea" : ultima ? "Sin conexión" : "Sin datos"}</span>
+        <span className="text-[#c7c5c0]">·</span>
+        <span>Dársena v{APP_VERSION}</span>
+        {versionScript && (
+          <>
+            <span className="text-[#c7c5c0]">·</span>
+            <span>Script {versionScript}</span>
+          </>
+        )}
+      </div>
+      <div className="invisible absolute right-0 z-30 mt-1 w-[min(420px,90vw)] rounded-lg border border-[#e2e0dc] bg-white p-3 text-xs opacity-0 shadow-lg transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+        <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#282828]">
+          <span className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-emerald-500" : "bg-[#e83038]"}`} aria-hidden />
+          {ok ? "Automatización funcionando" : "La automatización no ha revisado en los últimos 15 min"}
+        </p>
+        {ultima && <p className="mb-3 text-[#606060]">Última revisión: {new Date(ultima).toLocaleString("es-ES")} ({haceCuanto(ultima)})</p>}
+
+        <p className="mb-1 font-semibold text-[#282828]">Script de automatización {versionScript ? `· ${versionScript}` : ""}</p>
+        {versionScript && !scriptConocido && <p className="mb-1 text-[#9a5b00]">Versión en uso sin descripción registrada.</p>}
+        <ul className="mb-3 flex max-h-32 flex-col gap-1 overflow-y-auto">
+          {SCRIPT_VERSIONES.map((v) => (
+            <li key={v.version} className={v.version === versionScript ? "text-[#282828]" : "text-[#8a8a8a]"}>
+              <b>{v.version}</b>
+              {v.version === versionScript && <span className="ml-1 rounded bg-[#e6f4ea] px-1 text-[10px] font-semibold text-[#1e7e34]">en uso</span>} — {v.desc}
+            </li>
+          ))}
+        </ul>
+
+        <p className="mb-1 font-semibold text-[#282828]">Dársena · v{APP_VERSION}</p>
+        <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+          {CHANGELOG.map((c, i) => (
+            <li key={c.version} className={i === 0 ? "text-[#282828]" : "text-[#8a8a8a]"}>
+              <b>v{c.version}</b>
+              {c.fecha ? ` (${fechaCorta(c.fecha)})` : ""} — {c.desc}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
