@@ -500,11 +500,16 @@ export const dias1 = (v: number | null | undefined) => (v === null || v === unde
 
 // ── Acciones que escriben en la hoja ──
 
-export async function accionPortal(accion: "motivo" | "sinSeguimiento", codigo: string, valor: string | boolean): Promise<{ holded?: boolean }> {
+export async function accionPortal(
+  accion: "motivo" | "sinSeguimiento" | "estado",
+  codigo: string,
+  valor: string | boolean,
+  motivo?: string,
+): Promise<{ holded?: boolean }> {
   const res = await fetch("/api/portal/accion", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accion, codigo, valor }),
+    body: JSON.stringify({ accion, codigo, valor, motivo }),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.error || `Error ${res.status}`);
@@ -540,6 +545,98 @@ export function SelectorMotivo({ o, onGuardado }: { o: Oportunidad; onGuardado: 
         ))}
       </select>
       {error && <span className="max-w-xs text-xs text-[#b3161b]">{error}</span>}
+    </span>
+  );
+}
+
+/**
+ * Marcar una oportunidad como Ganada o Perdida (con motivo) desde el portal, o reabrirla.
+ * Escribe en la hoja Solicitudes (columna Estado) y mueve la oportunidad en Holded si su embudo tiene esa etapa.
+ */
+export function CambiarEstado({ o, onGuardado }: { o: Oportunidad; onGuardado: () => void }) {
+  const [paso, setPaso] = useState<"" | "Ganado" | "Perdido">("");
+  const [motivo, setMotivo] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
+  if (o.origen === "crm") return null;
+  const cerrada = o.estado === "Ganado" || o.estado === "Perdido";
+
+  async function guardar(estado: string, m?: string) {
+    setGuardando(true);
+    setError("");
+    try {
+      const r = await accionPortal("estado", o.codigo, estado, m);
+      setAviso(r.holded ? "Actualizado también en Holded." : "Guardado. En Holded no se pudo mover la etapa: revísalo allí.");
+      setPaso("");
+      setMotivo("");
+      onGuardado();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const btn = "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold disabled:opacity-50";
+  return (
+    <span className="inline-flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+      {cerrada ? (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${o.estado === "Ganado" ? "bg-[#e6f4ea] text-[#1e7e34]" : "bg-[#fdecec] text-[#b3161b]"}`}>
+            {o.estado}
+          </span>
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => guardar("Presupuesto enviado")}
+            title="Vuelve a «Presupuesto enviado» (por si se marcó por error)"
+            className={`${btn} border-[#e2e0dc] bg-white font-medium text-[#606060] hover:border-[#606060]`}
+          >
+            {guardando && <Loader2 size={12} className="animate-spin" />} Reabrir
+          </button>
+        </span>
+      ) : paso === "" ? (
+        <span className="inline-flex flex-wrap gap-2">
+          <button type="button" disabled={guardando} onClick={() => setPaso("Ganado")} className={`${btn} border-[#1e7e34]/40 bg-[#e6f4ea] text-[#1e7e34] hover:bg-[#d4ecdb]`}>
+            Marcar ganada
+          </button>
+          <button type="button" disabled={guardando} onClick={() => setPaso("Perdido")} className={`${btn} border-[#e83038]/40 bg-[#fdecec] text-[#b3161b] hover:bg-[#f9dcdc]`}>
+            Marcar perdida
+          </button>
+        </span>
+      ) : (
+        <span className="inline-flex flex-wrap items-center gap-2 rounded-md border border-[#e2e0dc] bg-[#fafaf9] px-2 py-1.5">
+          {paso === "Ganado" ? (
+            <span className="text-xs">¿Marcar {o.codigo} como <b className="text-[#1e7e34]">ganada</b>?</span>
+          ) : (
+            <select
+              aria-label={`Motivo de pérdida de ${o.codigo}`}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              className="rounded-md border border-[#e2e0dc] bg-white px-2 py-1 text-xs outline-none focus:border-[#e83038]"
+            >
+              <option value="">Motivo de pérdida (opcional)…</option>
+              {MOTIVOS_PERDIDA.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            disabled={guardando}
+            onClick={() => guardar(paso, paso === "Perdido" ? motivo : undefined)}
+            className={`${btn} ${paso === "Ganado" ? "border-[#1e7e34] bg-[#1e7e34] text-white hover:bg-[#176429]" : "border-[#b3161b] bg-[#b3161b] text-white hover:bg-[#8f1116]"}`}
+          >
+            {guardando && <Loader2 size={12} className="animate-spin" />} Confirmar
+          </button>
+          <button type="button" disabled={guardando} onClick={() => setPaso("")} className="px-1 text-xs text-[#606060] hover:text-[#282828]">
+            Cancelar
+          </button>
+        </span>
+      )}
+      {error && <span className="max-w-xs text-xs text-[#b3161b]">{error}</span>}
+      {aviso && !error && <span className="max-w-xs text-xs text-[#606060]">{aviso}</span>}
     </span>
   );
 }
@@ -819,6 +916,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
                 </>
               )
             )}
+            {fila("Resultado", o.origen !== "crm" && <CambiarEstado o={o} onGuardado={onCambio} />)}
             {fila("Motivo pérdida", o.estado === "Perdido" && o.origen !== "crm" && <SelectorMotivo o={o} onGuardado={onCambio} />)}
             {fila("Atención", o.atencion && <span className="font-semibold text-[#b3161b]">{o.atencion}</span>)}
             {fila("Faltan datos", o.faltanDatos && <span className="text-[#9a5b00]">{o.faltanDatos}</span>)}

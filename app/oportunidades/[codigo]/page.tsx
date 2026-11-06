@@ -7,6 +7,7 @@ import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import { PortalHeader } from "../../components/PortalNav";
 import {
   BotonSeguimiento,
+  CambiarEstado,
   Cargando,
   EnlacesOportunidad,
   ErrorDatos,
@@ -284,6 +285,7 @@ export default function FichaPage() {
                         </>
                       )
                     )}
+                    {fila("Resultado", o.origen !== "crm" && <CambiarEstado o={o} onGuardado={recargar} />)}
                     {fila("Motivo pérdida", o.estado === "Perdido" && o.origen !== "crm" && <SelectorMotivo o={o} onGuardado={recargar} />)}
                   </dl>
                   {o.resumen && <p className="mt-2 whitespace-pre-line rounded-md bg-[#f5f4f2] px-3 py-2 text-sm">{o.resumen}</p>}

@@ -6,6 +6,9 @@ import { COL } from "@/lib/solicitudes";
 // Acciones del portal que escriben en la hoja Solicitudes:
 //  · motivo  → columna W "Motivo pérdida" (y nota en la oportunidad de Holded, si hay HOLDED_API_KEY)
 //  · sinSeguimiento → casilla T "Sin seguimiento" (para el seguimiento automático del script)
+//  · estado → columna N "Estado": Ganado, Perdido (con motivo opcional en W) o Presupuesto enviado (reabrir).
+//    El script de la hoja registra la fecha del cambio y lo pasa al histórico de ofertas en su siguiente ronda (≤10 min).
+//    En Holded se mueve la oportunidad a la etapa Ganado/Perdido de su embudo si existe; si no, se deja una nota.
 // La hoja tiene que estar compartida como EDITOR con la cuenta de servicio.
 
 const HOJA = "Solicitudes";
@@ -17,7 +20,7 @@ function letra(col: number): string {
 }
 
 export async function POST(req: Request) {
-  let body: { accion?: string; codigo?: string; valor?: unknown };
+  let body: { accion?: string; codigo?: string; valor?: unknown; motivo?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -35,9 +38,15 @@ export async function POST(req: Request) {
   } else if (body.accion === "sinSeguimiento") {
     valor = body.valor === true;
     col = COL.SIN_SEGUIMIENTO;
+  } else if (body.accion === "estado") {
+    valor = String(body.valor ?? "").trim();
+    if (!ESTADOS_PORTAL.includes(valor)) return NextResponse.json({ error: "Estado no válido" }, { status: 400 });
+    col = COL.ESTADO;
   } else {
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   }
+  const motivo = body.accion === "estado" && valor === "Perdido" ? String(body.motivo ?? "").trim() : "";
+  if (motivo && !MOTIVOS_PERDIDA.includes(motivo)) return NextResponse.json({ error: "Motivo no válido" }, { status: 400 });
 
   try {
     const sheetId = solicitudesSheetId();
@@ -53,6 +62,13 @@ export async function POST(req: Request) {
 
     let holded = false;
     if (body.accion === "motivo" && valor) holded = await notaHolded(codigo, `Motivo de pérdida: ${valor} (indicado en el portal).`);
+    if (body.accion === "estado") {
+      // Al cerrar o reabrir, el motivo de pérdida se ajusta: se guarda el elegido o se borra si ya no está perdida
+      if (motivo || valor !== "Perdido") await escribirRango(sheetId, `${HOJA}!${letra(COL.MOTIVO_PERDIDA)}${fila}`, [[motivo]]);
+      // Al cerrarla se para el seguimiento automático al cliente
+      if (valor === "Ganado" || valor === "Perdido") await escribirRango(sheetId, `${HOJA}!${letra(COL.SIN_SEGUIMIENTO)}${fila}`, [[true]]);
+      holded = await estadoHolded(codigo, valor as string, motivo);
+    }
     return NextResponse.json({ ok: true, fila, holded });
   } catch (err) {
     const msg = (err as Error).message || "No se pudo guardar";
@@ -67,6 +83,50 @@ export async function POST(req: Request) {
       },
       { status: sinPermiso ? 403 : 502 }
     );
+  }
+}
+
+const ESTADOS_PORTAL = ["Ganado", "Perdido", "Presupuesto enviado"];
+
+/**
+ * Refleja el cambio en Holded: mueve la oportunidad a la etapa «Ganado»/«Perdido» de su embudo (si existe)
+ * y deja una nota. Devuelve true si la etapa cambió. Opcional: si falla, la hoja ya está actualizada.
+ */
+async function estadoHolded(codigo: string, estado: string, motivo: string): Promise<boolean> {
+  const key = process.env.HOLDED_API_KEY;
+  if (!key) return false;
+  try {
+    const h = { key, accept: "application/json", "Content-Type": "application/json" };
+    const base = "https://api.holded.com/api/crm/v1";
+    const [rl, rf] = await Promise.all([fetch(`${base}/leads`, { headers: h }), fetch(`${base}/funnels`, { headers: h })]);
+    if (!rl.ok) return false;
+    const leads = (await rl.json()) as { id: string; name?: string; funnelId?: string; stageId?: string }[];
+    const re = new RegExp("^\\s*" + codigo + "(?!\\d)", "i");
+    const lead = (Array.isArray(leads) ? leads : []).filter((l) => re.test(String(l.name || ""))).pop();
+    if (!lead) return false;
+    const nota = `Marcada como ${estado} en Dársena${motivo ? ` · motivo: ${motivo}` : ""}.`;
+    await fetch(`${base}/leads/${lead.id}/notes`, { method: "POST", headers: h, body: JSON.stringify({ title: `Estado: ${estado}`, desc: nota }) }).catch(() => null);
+    if (!rf.ok) return false;
+    const funnels = (await rf.json()) as { id?: string; stages?: { stageId?: string; id?: string; key?: string; name?: string }[] }[];
+    const patron = estado === "Ganado" ? /ganad|won|aceptad/i : estado === "Perdido" ? /perdid|lost|rechazad|descartad/i : /enviad|sent|seguimiento|negociaci/i;
+    const embudo = (Array.isArray(funnels) ? funnels : []).find((f) =>
+      (f.stages || []).some((s) => (s.stageId || s.id || s.key) === lead.stageId),
+    );
+    const etapa = (embudo?.stages || []).find((s) => patron.test(String(s.name || "")));
+    const stageId = etapa ? etapa.stageId || etapa.id || etapa.key : null;
+    if (!stageId || stageId === lead.stageId) return !!stageId;
+    for (const [url, cuerpo] of [
+      [`${base}/leads/${lead.id}/stages`, { stageId }],
+      [`${base}/leads/${lead.id}`, { stageId }],
+    ] as const) {
+      const r = await fetch(url, { method: "PUT", headers: h, body: JSON.stringify(cuerpo) }).catch(() => null);
+      if (!r?.ok) continue;
+      const comprobar = await fetch(`${base}/leads/${lead.id}`, { headers: h }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      if (comprobar?.stageId === stageId) return true;
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 

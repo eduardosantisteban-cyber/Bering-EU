@@ -15,7 +15,7 @@ import { provinciaDeTexto } from "./provincias";
 //  W motivo pérdida · X canal · Y provincia (las tres las crea el script desde el 20/10/2026)
 //  Z faltan datos (lo que falta pedir al cliente; DatosFaltantes.gs desde el 29/10/2026)
 
-export const COL = { MOTIVO_PERDIDA: 23, CANAL: 24, PROVINCIA: 25, SIN_SEGUIMIENTO: 20, FALTAN_DATOS: 26 } as const;
+export const COL = { ESTADO: 14, MOTIVO_PERDIDA: 23, CANAL: 24, PROVINCIA: 25, SIN_SEGUIMIENTO: 20, FALTAN_DATOS: 26 } as const;
 
 export const ESTADOS = {
   PENDIENTE: "Pendiente presupuesto",
