@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   const detalle = [];
   for (const l of lista) {
     const full = (await fetch(`${base}/leads/${l.id}`, { headers: h }).then((r) => r.json()).catch(() => ({}))) as Record<string, unknown>;
-    detalle.push({ lista: resumen(l), detalle: resumen(full) });
+    detalle.push({ lista: resumen(l), detalle: resumen(full), events: JSON.stringify(full.events ?? l.events ?? null).slice(0, 3000) });
   }
   // Posibles listados de razones de pérdida
   const extra: Record<string, unknown> = {};
@@ -32,6 +32,6 @@ export async function GET(req: Request) {
     extra[p] = r ? `${r.status} ${(await r.text()).slice(0, 400)}` : "error";
   }
   const funnels = (await fetch(`${base}/funnels`, { headers: h }).then((r) => r.json()).catch(() => [])) as Record<string, unknown>[];
-  extra.funnelKeys = funnels.map((f) => ({ name: f.name, keys: Object.keys(f), lost: Object.entries(f).filter(([k]) => /lost|reason/i.test(k)) }));
+  extra.funnelKeys = funnels.map((f) => ({ name: f.name, keys: Object.keys(f), lost: Object.entries(f).filter(([k]) => /lost|reason/i.test(k)), preferences: JSON.stringify(f.preferences ?? null).slice(0, 2000), customFields: JSON.stringify(f.customFields ?? null).slice(0, 800) }));
   return NextResponse.json({ n: lista.length, detalle, extra });
 }
