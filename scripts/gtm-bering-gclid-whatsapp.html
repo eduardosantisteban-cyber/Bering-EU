@@ -8,7 +8,8 @@
   2. Formulario: rellena los campos ocultos (gclid, gbraid, wbraid, utm_*, pagina_entrada) y, al enviar,
      añade «[Ref. web: <gclid>]» al final de los comentarios. Así el gclid llega en el correo aunque la
      plantilla de Contact Form 7 no incluya los campos ocultos (es lo que lee la automatización de marketing).
-  3. WhatsApp y email: al pulsar, añade al mensaje la página y un código corto «Ref. W-XXXXXX» y lo registra
+  3. Envío correcto del formulario (Contact Form 7): lanza el evento «formulario_enviado» en el dataLayer.
+  4. WhatsApp y email: al pulsar, añade al mensaje la página y un código corto «Ref. W-XXXXXX» y lo registra
      en Dársena con el clic del anuncio. En Dársena, la ficha de la oportunidad lo vincula y pasa el gclid a
      la hoja de subida a Google Ads.
   No cambia los enlaces de teléfono (las llamadas siguen midiéndose con su activador).
@@ -99,6 +100,11 @@
   }, true);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", rellenarTodos);
   else rellenarTodos();
+  // Envío correcto de Contact Form 7 → evento "formulario_enviado" (activador de la conversión del formulario)
+  document.addEventListener("wpcf7mailsent", function () {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event: "formulario_enviado", pagina_formulario: location.pathname });
+  });
 
   // 3. WhatsApp y email con código de referencia
   function nuevaRef() {
