@@ -12,8 +12,13 @@ export const FICHAS_BUCKET = "fichas-tecnicas-pdfs";
 
 // Sube este número cada vez que se despliegue un cambio, y añade una
 // línea al historial para saber qué trae cada versión.
-export const APP_VERSION = "4.6.0";
+export const APP_VERSION = "4.7.0";
 export const CHANGELOG: { version: string; fecha?: string; desc: string }[] = [
+  {
+    version: "4.7.0",
+    fecha: "2026-11-06",
+    desc: "Oportunidades: «Origen web» con el clic de Google Ads (formulario) o el código Ref. W-XXXXXX de WhatsApp/email; se vincula al abrir la ficha y el clic pasa a la hoja de subida de conversiones a Google Ads",
+  },
   {
     version: "4.6.0",
     fecha: "2026-11-06",

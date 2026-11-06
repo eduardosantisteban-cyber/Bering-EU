@@ -50,6 +50,16 @@ export const TIPOS_PRODUCTO: { clave: string; nombre: string }[] = [
 ];
 
 /** ID del Google Sheet "Solicitudes" (el mismo HOJA_ID de las propiedades del script). */
+/**
+ * Hoja «Bering EU – Marketing (automatizaciones)»: su pestaña GCLID (Nº oportunidad · Email · GCLID · Fecha
+ * solicitud · Asunto · Registrado) alimenta la subida de conversiones a Google Ads. Variable MARKETING_SHEET_ID
+ * para cambiarla; si no, la de siempre. Para escribir hay que compartirla como EDITOR con la cuenta de servicio.
+ */
+export function marketingSheetId(): string {
+  const id = (process.env.MARKETING_SHEET_ID || "").trim();
+  return id || "1yQKPhKQx9o2t06n4mUyQdCoPbS5SwOhOIGf2H49KBvI";
+}
+
 export function solicitudesSheetId(): string {
   // Tolera espacios o mayúsculas distintas en el nombre de la variable (fácil de colar al pegarla en Vercel)
   const clave = Object.keys(process.env).find((k) => k.trim().toUpperCase() === "SOLICITUDES_SHEET_ID");

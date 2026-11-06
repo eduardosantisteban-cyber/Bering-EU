@@ -14,6 +14,7 @@ import {
   EstadoPill,
   MarcaBadge,
   OrigenBadge,
+  OrigenWeb,
   SelectorMotivo,
   Tarjeta,
   conIva,
@@ -265,6 +266,7 @@ export default function FichaPage() {
                     {fila("Medidas", o.medidas)}
                     {fila("Provincia", o.provincia)}
                     {fila("Canal", o.canal)}
+                    {fila("Origen web", o.origen !== "crm" && <OrigenWeb o={o} />)}
                     {fila("Solicitud", o.fechaSolicitud && fechaCorta(o.fechaSolicitud))}
                     {fila(
                       "Presupuesto",

@@ -549,6 +549,117 @@ export function SelectorMotivo({ o, onGuardado }: { o: Oportunidad; onGuardado: 
   );
 }
 
+interface OrigenWebDatos {
+  ref: string | null;
+  aviso: string;
+  via: string | null;
+  origen: string | null;
+  clicAnuncio: boolean;
+  campana: string | null;
+  termino: string | null;
+  landing: string | null;
+  pagina: string | null;
+  fechaClic: string | null;
+  hoja: string;
+  hojaDetalle: string | null;
+}
+
+/**
+ * De dónde vino la oportunidad en la web: clic de Google Ads (gclid) del formulario o código «Ref. W-XXXXXX»
+ * de WhatsApp/email. Al abrir la ficha se vincula solo y el gclid pasa a la hoja de subida a Google Ads.
+ */
+export function OrigenWeb({ o }: { o: Oportunidad }) {
+  const [d, setD] = useState<OrigenWebDatos | null>(null);
+  const [error, setError] = useState("");
+  const [ref, setRef] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  const consultar = useCallback(
+    async (refManual?: string) => {
+      setCargando(true);
+      setError("");
+      try {
+        const res = await fetch("/api/web-ref/oportunidad", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            codigo: o.codigo,
+            email: o.email,
+            fecha: o.fechaSolicitud,
+            asunto: o.asunto,
+            texto: [o.resumen, o.faltanDatos].filter(Boolean).join("\n"),
+            ref: refManual || undefined,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error || `Error ${res.status}`);
+        setD(body);
+        if (refManual) setRef("");
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setCargando(false);
+      }
+    },
+    [o.codigo, o.email, o.fechaSolicitud, o.asunto, o.resumen, o.faltanDatos],
+  );
+
+  useEffect(() => {
+    if (o.origen !== "crm") consultar();
+  }, [consultar, o.origen]);
+
+  if (o.origen === "crm") return null;
+  if (!d && cargando) return <span className="text-xs text-[#8a8a8a]">Buscando…</span>;
+
+  const hojaTexto: Record<string, string> = {
+    "ya estaba": "clic ya enviado a la hoja de Google Ads",
+    añadido: "clic enviado a la hoja de Google Ads",
+    actualizado: "clic enviado a la hoja de Google Ads",
+  };
+  return (
+    <span className="inline-flex flex-col gap-1">
+      {d?.origen ? (
+        <span>
+          <b className={d.clicAnuncio ? "text-[#1e7e34]" : ""}>{d.origen}</b>
+          {d.via && <> · {d.via}</>}
+          {d.ref && <> · {d.ref}</>}
+          {d.campana && <> · campaña {d.campana}</>}
+          {d.termino && <> · «{d.termino}»</>}
+          {(d.landing || d.pagina) && <span className="text-[#606060]"> · entró por {d.landing || d.pagina}</span>}
+          {d.clicAnuncio && hojaTexto[d.hoja] && <span className="block text-xs text-[#606060]">{hojaTexto[d.hoja]}</span>}
+          {(d.hoja === "sin permiso" || d.hoja === "error") && (
+            <span className="block text-xs text-[#b3161b]">No se pudo pasar el clic a la hoja de Google Ads: {d.hojaDetalle}</span>
+          )}
+        </span>
+      ) : (
+        <span className="text-[#8a8a8a]">Sin referencia web{d?.aviso ? ` (${d.aviso})` : ""}</span>
+      )}
+      {d?.origen && d.aviso && <span className="text-xs text-[#9a5b00]">{d.aviso}</span>}
+      {!d?.ref && (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <input
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+            placeholder="W-XXXXXX"
+            aria-label={`Código de referencia web de ${o.codigo}`}
+            className="w-28 rounded-md border border-[#e2e0dc] bg-white px-2 py-0.5 text-xs uppercase outline-none focus:border-[#e83038]"
+          />
+          <button
+            type="button"
+            disabled={cargando || !ref.trim()}
+            onClick={() => consultar(ref.trim())}
+            className="inline-flex items-center gap-1 rounded-md border border-[#e2e0dc] bg-white px-2 py-0.5 text-xs font-medium text-[#606060] hover:border-[#606060] disabled:opacity-50"
+          >
+            {cargando && <Loader2 size={12} className="animate-spin" />} Vincular
+          </button>
+          <span className="text-xs text-[#8a8a8a]">el código del mensaje de WhatsApp o email</span>
+        </span>
+      )}
+      {error && <span className="text-xs text-[#b3161b]">{error}</span>}
+    </span>
+  );
+}
+
 /**
  * Marcar una oportunidad como Ganada o Perdida (con motivo) desde el portal, o reabrirla.
  * Escribe en la hoja Solicitudes (columna Estado) y mueve la oportunidad en Holded si su embudo tiene esa etapa.
@@ -871,6 +982,7 @@ export function FichaOportunidad({ o, onCerrar, onCambio }: { o: Oportunidad | n
             {fila("Medidas", o.medidas)}
             {fila("Provincia", o.provincia)}
             {fila("Canal", o.canal)}
+            {fila("Origen web", o.origen !== "crm" && <OrigenWeb o={o} />)}
             {fila("Asunto", o.asunto)}
             {fila("Adjuntos", o.adjuntos)}
             {fila("Solicitud", o.fechaSolicitud && fechaCorta(o.fechaSolicitud))}

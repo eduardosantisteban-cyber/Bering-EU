@@ -1,0 +1,155 @@
+<!--
+  Bering · gclid y WhatsApp  (etiqueta HTML personalizado de Google Tag Manager, contenedor GTM-KF48RWQ6)
+  Sustituye a la etiqueta HTML actual que guarda el gclid (la del localStorage "bering_gclid").
+  Activador: All Pages (igual que la actual). Consentimiento: ad_storage (igual que la actual).
+
+  Qué hace:
+  1. Guarda el clic del anuncio (gclid, gbraid, wbraid), las UTM y la página de entrada durante 90 días.
+  2. Formulario: rellena los campos ocultos (gclid, gbraid, wbraid, utm_*, pagina_entrada) y, al enviar,
+     añade «[Ref. web: <gclid>]» al final de los comentarios. Así el gclid llega en el correo aunque la
+     plantilla de Contact Form 7 no incluya los campos ocultos (es lo que lee la automatización de marketing).
+  3. WhatsApp y email: al pulsar, añade al mensaje la página y un código corto «Ref. W-XXXXXX» y lo registra
+     en Dársena con el clic del anuncio. En Dársena, la ficha de la oportunidad lo vincula y pasa el gclid a
+     la hoja de subida a Google Ads.
+  No cambia los enlaces de teléfono (las llamadas siguen midiéndose con su activador).
+-->
+<script>
+(function () {
+  var ENDPOINT = "https://bering-eu.vercel.app/api/web-ref";
+  var WHATSAPP = "34911233154";
+  var EMAIL = "info@beringeu.es";
+  var DIAS = 90;
+  var ALFABETO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+  function param(n) {
+    var m = window.location.search.match(new RegExp("[?&]" + n + "=([^&#]+)"));
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
+  }
+  function leer(k) {
+    try {
+      var x = JSON.parse(localStorage.getItem(k) || "null");
+      if (x && Date.now() - x.t < DIAS * 864e5) return x.v;
+    } catch (e) {}
+    return null;
+  }
+  function guardar(k, v) {
+    try { localStorage.setItem(k, JSON.stringify({ v: v, t: Date.now() })); } catch (e) {}
+  }
+  function cookieGclid() {
+    var m = document.cookie.match(/(?:^|;\s*)_gcl_aw=([^;]+)/);
+    if (!m) return null;
+    var p = m[1].split(".");
+    return p.length >= 3 ? p.slice(2).join(".") : null;
+  }
+  var valido = /^[A-Za-z0-9_-]{10,250}$/;
+
+  // 1. Clic del anuncio y origen de la visita
+  var clic = { gclid: param("gclid"), gbraid: param("gbraid"), wbraid: param("wbraid") };
+  var utm = {
+    utm_source: param("utm_source"), utm_medium: param("utm_medium"),
+    utm_campaign: param("utm_campaign"), utm_term: param("utm_term")
+  };
+  if (clic.gclid || clic.gbraid || clic.wbraid) {
+    // Un clic nuevo sustituye al anterior (y a sus UTM y página de entrada)
+    guardar("bering_gclid", clic.gclid ? clic.gclid : "");
+    guardar("bering_clic", { gclid: clic.gclid, gbraid: clic.gbraid, wbraid: clic.wbraid, landing: location.pathname });
+    guardar("bering_utm", utm);
+  } else {
+    var prev = leer("bering_clic");
+    if (prev) clic = prev;
+    else clic.gclid = leer("bering_gclid") || cookieGclid();
+    if (utm.utm_source) guardar("bering_utm", utm);
+    else utm = leer("bering_utm") || utm;
+  }
+  var landing = clic.landing || null;
+  var ids = ["gclid", "gbraid", "wbraid"];
+  for (var q = 0; q < ids.length; q++) if (clic[ids[q]] && !valido.test(clic[ids[q]])) clic[ids[q]] = null;
+  try {
+    if (!sessionStorage.getItem("bering_landing")) sessionStorage.setItem("bering_landing", location.pathname);
+    landing = landing || sessionStorage.getItem("bering_landing");
+  } catch (e) { landing = landing || location.pathname; }
+
+  // 2. Formularios
+  function rellenar(f) {
+    var vals = {
+      gclid: clic.gclid, gbraid: clic.gbraid, wbraid: clic.wbraid,
+      utm_source: utm.utm_source, utm_medium: utm.utm_medium, utm_campaign: utm.utm_campaign, utm_term: utm.utm_term,
+      pagina_entrada: landing
+    };
+    for (var n in vals) {
+      if (!vals[n]) continue;
+      var i = f.querySelector('input[name="' + n + '"]');
+      if (i) i.value = vals[n];
+    }
+  }
+  function rellenarTodos() {
+    var fs = document.querySelectorAll("form");
+    for (var i = 0; i < fs.length; i++) rellenar(fs[i]);
+  }
+  document.addEventListener("submit", function (e) {
+    var f = e.target;
+    if (!f || f.tagName !== "FORM") return;
+    rellenar(f);
+    var id = clic.gclid || clic.gbraid || clic.wbraid;
+    if (!id) return;
+    var ts = f.querySelectorAll("textarea");
+    if (!ts.length) return;
+    var t = ts[ts.length - 1], marca = "[Ref. web: " + id + "]";
+    if (t.value.indexOf(marca) === -1) t.value = t.value.replace(/\s+$/, "") + "\n\n" + marca;
+  }, true);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", rellenarTodos);
+  else rellenarTodos();
+
+  // 3. WhatsApp y email con código de referencia
+  function nuevaRef() {
+    var s = "W-", a = new Uint8Array(6);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a);
+    else for (var j = 0; j < 6; j++) a[j] = Math.floor(Math.random() * 256);
+    for (var i = 0; i < 6; i++) s += ALFABETO.charAt(a[i] % ALFABETO.length);
+    return s;
+  }
+  function miRef() {
+    var r = leer("bering_ref");
+    if (!r || !/^W-[A-Z2-9]{6}$/.test(r)) { r = nuevaRef(); guardar("bering_ref", r); }
+    return r;
+  }
+  function pagina() {
+    var t = (document.title || "").split(/\s[-|–·]\s/)[0].trim();
+    return t || location.pathname;
+  }
+  function avisar(ref, canal) {
+    var datos = JSON.stringify({
+      ref: ref, canal: canal, gclid: clic.gclid, gbraid: clic.gbraid, wbraid: clic.wbraid,
+      pagina: location.pathname, landing: landing,
+      utm_source: utm.utm_source, utm_medium: utm.utm_medium, utm_campaign: utm.utm_campaign, utm_term: utm.utm_term
+    });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, new Blob([datos], { type: "text/plain" }))) return;
+    } catch (e) {}
+    try { fetch(ENDPOINT, { method: "POST", body: datos, mode: "no-cors", keepalive: true }); } catch (e) {}
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (!a) return;
+    var href = a.getAttribute("href") || "";
+    var ref;
+    if (href.indexOf("wa.me/" + WHATSAPP) !== -1 || href.indexOf("phone=" + WHATSAPP) !== -1) {
+      ref = miRef();
+      if (href.indexOf(ref) === -1) {
+        var m = href.match(/[?&]text=([^&#]*)/);
+        var texto = m ? decodeURIComponent(m[1].replace(/\+/g, " ")) + " " : "Hola, vengo de la web (" + pagina() + ") y quiero información. ";
+        texto += "Ref. " + ref;
+        var base = href.replace(/([?&])text=[^&#]*&?/, "$1").replace(/[?&]$/, "");
+        a.setAttribute("href", base + (base.indexOf("?") === -1 ? "?" : "&") + "text=" + encodeURIComponent(texto));
+      }
+      avisar(ref, "whatsapp");
+    } else if (href.toLowerCase().indexOf("mailto:" + EMAIL) === 0) {
+      ref = miRef();
+      if (href.indexOf(ref) === -1 && !/[?&]subject=/i.test(href)) {
+        a.setAttribute("href", "mailto:" + EMAIL + "?subject=" + encodeURIComponent("Consulta desde la web: " + pagina() + " (Ref. " + ref + ")"));
+      }
+      avisar(ref, "email");
+    }
+  }, true);
+})();
+</script>
