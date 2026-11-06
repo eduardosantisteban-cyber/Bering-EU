@@ -92,7 +92,7 @@ export async function POST(req: Request) {
 const ESTADOS_PORTAL = ["Ganado", "Perdido", "Presupuesto enviado"];
 
 /**
- * Refleja el cambio en Holded. En Holded «ganada/perdida» es el estado de la oportunidad (status 1 / 2; 0 = abierta),
+ * Refleja el cambio en Holded. En Holded «ganada/perdida» es el estado de la oportunidad (status 1 / -1; 0 = abierta),
  * no una etapa: primero se cambia ese estado; si la API no lo acepta, se prueba a mover a una etapa llamada
  * «Ganado»/«Perdido» del embudo. Siempre deja una nota. Devuelve si se aplicó y, si no, por qué.
  */
@@ -115,9 +115,10 @@ async function estadoHolded(codigo: string, estado: string, motivo: string): Pro
 
     const leer = () => fetch(`${base}/leads/${lead.id}`, { headers: h }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
 
-    // 1) Estado de la oportunidad: 1 ganada · 2 perdida · 0 abierta
-    const status = estado === "Ganado" ? 1 : estado === "Perdido" ? 2 : 0;
-    for (const cuerpo of [{ status }, { status: String(status) }]) {
+    // 1) Estado de la oportunidad en la API de Holded: 1 ganada · -1 perdida · 0 abierta
+    //    (con 2 la API lo acepta y lo guarda, pero Holded no la muestra como perdida)
+    const status = estado === "Ganado" ? 1 : estado === "Perdido" ? -1 : 0;
+    for (const cuerpo of [{ status }]) {
       const r = await fetch(`${base}/leads/${lead.id}`, { method: "PUT", headers: h, body: JSON.stringify(cuerpo) }).catch(() => null);
       if (!r) continue;
       if (!r.ok) {
